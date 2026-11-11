@@ -325,9 +325,13 @@ public sealed class UsabilityTests
         Vector2 hi = new(float.MinValue);
         bool inside = true;
         int n = 0;
+
+        // A floor far larger than the bodies is scenery, as it is for the framing itself.
+        float[] sizes = [.. list.Items.ToArray().Where(i => i.Kind is not (DrawKind.Mesh or DrawKind.Line or DrawKind.Arrow or DrawKind.Label) && isBody(i)).Select(i => i.Size.Length()).Order()];
+        float limit = sizes.Length == 0 ? float.MaxValue : sizes[sizes.Length / 2] * DrawBounds.SceneryFactor;
         foreach (ref readonly DrawItem item in list.Items)
         {
-            if (item.Kind is DrawKind.Mesh or DrawKind.Line or DrawKind.Arrow or DrawKind.Label || !isBody(item))
+            if (item.Kind is DrawKind.Mesh or DrawKind.Line or DrawKind.Arrow or DrawKind.Label || !isBody(item) || item.Size.Length() > limit)
             {
                 continue;
             }

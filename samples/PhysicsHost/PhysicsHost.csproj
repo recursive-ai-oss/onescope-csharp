@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>$(OneScopeRootNamespace).Samples.PhysicsHost</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="RecursiveAI.OnePhysics" />
+    <PackageReference Include="RecursiveAI.OnePhysics.Scope" />
+    <ProjectReference Include="..\..\src\OneScope.Probe\OneScope.Probe.csproj" />
+    <ProjectReference Include="..\..\src\OneScope.Sdk\OneScope.Sdk.csproj" />
+  </ItemGroup>
+</Project>
