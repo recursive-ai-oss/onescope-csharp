@@ -64,12 +64,6 @@ public sealed class GoldenTests
         var runs = new List<(string Sha, string Renderer, string File)>();
         try
         {
-            // On a GPU the first capture of a configuration in a process can differ from later ones in its text pixels (the process's
-            // glyph caches are still cold); every later capture agrees with every other, and so does the first one in a fresh process.
-            // The warm-up capture is made and reported, but the identity check starts after it.
-            (string warmSha, _, string warmFile) = CaptureOnce(file, seek, view, size, fork, width, height);
-            File.Delete(warmFile);
-            Harness.Report($"golden {golden}: warm-up capture {warmSha[..16]}");
             for (int i = 0; i < 3; i++)
             {
                 runs.Add(CaptureOnce(file, seek, view, size, fork, width, height));
@@ -88,10 +82,16 @@ public sealed class GoldenTests
 
     private static void Check(string golden, List<(string Sha, string Renderer, string File)> runs)
     {
-        Harness.Report($"golden {golden}: runs {string.Join(" ", runs.Select(r => r.Sha[..16]))} renderer {runs[0].Renderer}");
-        Assert.Single(runs.Select(r => r.Sha).Distinct());
-        Assert.Single(runs.Select(r => Harness.Sha(File.ReadAllBytes(r.File))).Distinct());
-        if (!runs[0].Renderer.Contains(Reference, StringComparison.OrdinalIgnoreCase) && Environment.GetEnvironmentVariable("ONESCOPE_UPDATE_GOLDENS") != "1")
+        Harness.Report($"golden {golden}: runs {string.Join(" ", runs.Select(r => r.Sha[..16]))} renderer {string.Join(" | ", runs.Select(r => r.Renderer).Distinct())}");
+        // Captures are identical run to run on one device. When a host has several GPUs the runtime may pick a different one for a later
+        // shell (the runs report which), and two devices never agree to the last bit, so the identity check is per device.
+        foreach (IGrouping<string, (string Sha, string Renderer, string File)> device in runs.GroupBy(r => r.Renderer))
+        {
+            Assert.Single(device.Select(r => r.Sha).Distinct());
+            Assert.Single(device.Select(r => Harness.Sha(File.ReadAllBytes(r.File))).Distinct());
+        }
+
+        if (!runs.All(r => r.Renderer.Contains(Reference, StringComparison.OrdinalIgnoreCase)) && Environment.GetEnvironmentVariable("ONESCOPE_UPDATE_GOLDENS") != "1")
         {
             // Run-to-run identity above holds on any renderer; the pixels of the goldens only on the one that drew them.
             Harness.Report($"golden {golden}: renderer {runs[0].Renderer} is not {Reference}; compared with itself only");
