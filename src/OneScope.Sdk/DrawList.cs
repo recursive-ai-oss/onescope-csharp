@@ -45,7 +45,26 @@ public enum DrawFlags : byte
 /// <param name="Layer">Draw order within a view; higher layers draw later. Not a depth value.</param>
 /// <param name="Flags">Drawing modifiers.</param>
 /// <param name="Entity">The entity this item shows, or <see cref="EntityId.None"/>. The app picks it under the pointer and highlights it when selected.</param>
-public readonly record struct DrawStyle(Color32 Color, int Overlay = 0, int Layer = 0, DrawFlags Flags = DrawFlags.None, EntityId Entity = default);
+public readonly record struct DrawStyle(Color32 Color, int Overlay = 0, int Layer = 0, DrawFlags Flags = DrawFlags.None, EntityId Entity = default)
+{
+    /// <summary>
+    /// The constructor of the first preview, before items carried an entity. It stays so a module built against that preview
+    /// still loads; the item belongs to no entity.
+    /// </summary>
+    public DrawStyle(Color32 color, int overlay, int layer, DrawFlags flags)
+        : this(color, overlay, layer, flags, default)
+    {
+    }
+
+    /// <summary>The deconstruction of the first preview, without the entity.</summary>
+    public void Deconstruct(out Color32 color, out int overlay, out int layer, out DrawFlags flags)
+    {
+        color = Color;
+        overlay = Overlay;
+        layer = Layer;
+        flags = Flags;
+    }
+}
 
 /// <summary>
 /// One primitive in a <see cref="DrawList"/>. Which fields are used depends on <see cref="Kind"/>; unused fields are zero.

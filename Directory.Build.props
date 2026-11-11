@@ -23,6 +23,11 @@
     <PackageLicenseExpression>MIT OR Apache-2.0</PackageLicenseExpression>
   </PropertyGroup>
 
+  <!-- Pre-release packages from a local folder: set ONESCOPE_FEEDS to one or more folders (semicolon-separated) before restoring. -->
+  <PropertyGroup Condition="'$(ONESCOPE_FEEDS)' != ''">
+    <RestoreAdditionalProjectSources>$(ONESCOPE_FEEDS)</RestoreAdditionalProjectSources>
+  </PropertyGroup>
+
   <!-- All build output goes to ONESCOPE_ARTIFACTS when set, else the repo's ignored artifacts/. -->
   <PropertyGroup>
     <OneScopeArtifacts Condition="'$(ONESCOPE_ARTIFACTS)' != ''">$([MSBuild]::EnsureTrailingSlash('$(ONESCOPE_ARTIFACTS)'))</OneScopeArtifacts>

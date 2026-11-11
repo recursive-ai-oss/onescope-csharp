@@ -49,13 +49,20 @@ public sealed class Recording
     /// <summary>True when <see cref="Append"/> is allowed (forks only).</summary>
     public bool IsWritable { get; }
 
+    /// <summary>Creates a read-only recording that starts at step 0 and has no recorded hashes. The memory is not copied; do not change it afterwards.</summary>
+    /// <param name="setup">The module's setup bytes.</param>
+    /// <param name="inputs">One input per step, the first for step 0.</param>
+    /// <exception cref="ArgumentOutOfRangeException">An input is longer than <see cref="MaxInputBytes"/>.</exception>
+    public static Recording Create(ReadOnlyMemory<byte> setup, IEnumerable<ReadOnlyMemory<byte>> inputs) =>
+        Create(setup, inputs, 0, default);
+
     /// <summary>Creates a read-only recording. The memory is not copied; do not change it afterwards.</summary>
     /// <param name="setup">The module's setup bytes.</param>
     /// <param name="inputs">One input per step, the first for step <paramref name="startStep"/>.</param>
     /// <param name="startStep">The step the world starts at.</param>
     /// <param name="expectedHashes">The file's recorded hashes, or empty; see <see cref="ExpectedHashes"/>.</param>
     /// <exception cref="ArgumentOutOfRangeException">An input is longer than <see cref="MaxInputBytes"/>, or <paramref name="startStep"/> is negative.</exception>
-    public static Recording Create(ReadOnlyMemory<byte> setup, IEnumerable<ReadOnlyMemory<byte>> inputs, long startStep = 0, ReadOnlyMemory<ulong> expectedHashes = default)
+    public static Recording Create(ReadOnlyMemory<byte> setup, IEnumerable<ReadOnlyMemory<byte>> inputs, long startStep, ReadOnlyMemory<ulong> expectedHashes = default)
     {
         CheckStart(startStep);
         ArgumentNullException.ThrowIfNull(inputs);

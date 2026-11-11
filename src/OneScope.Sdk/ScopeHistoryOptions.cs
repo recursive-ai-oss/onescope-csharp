@@ -1,7 +1,7 @@
 namespace OneScope.Sdk;
 
 /// <summary>Limits and spacing for a <see cref="History"/>.</summary>
-public sealed class ScopeHistoryOptions
+public class ScopeHistoryOptions
 {
     /// <summary>The default keyframe interval in steps.</summary>
     public const int DefaultKeyframeInterval = 64;

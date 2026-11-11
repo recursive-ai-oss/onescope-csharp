@@ -42,6 +42,15 @@ public sealed class History
     {
     }
 
+    /// <summary>The 0.1 constructor, kept for modules built against SDK 0.1. Same as the one taking <see cref="ScopeHistoryOptions"/>.</summary>
+    /// <param name="source">The source to play.</param>
+    /// <param name="options">Limits and keyframe spacing; null for the defaults.</param>
+    [Obsolete("Pass a ScopeHistoryOptions. This overload is kept for modules built against SDK 0.1 and will be removed before 1.0.")]
+    public History(IScopeSource source, HistoryOptions? options)
+        : this(source, (ScopeHistoryOptions?)options, null, null)
+    {
+    }
+
     private History(IScopeSource source, ScopeHistoryOptions? options, History? seedFrom, long? seedThrough)
     {
         ArgumentNullException.ThrowIfNull(source);
