@@ -34,12 +34,21 @@ public sealed class LoaderTests
     public void AModuleContextUnloadsWhenItsModuleIsDisposed()
     {
         WeakReference weak = LoadAndDrop();
-        for (int i = 0; i < 10 && weak.IsAlive; i++)
+        // A collectible context is freed by the collection that finds nothing holding it, and the runtime finishes the unload after the finalizers
+        // have run, which on a busy machine can take more than a few immediate collections. Give it up to two seconds; a context that something still
+        // references (a leak) never goes, however long this waits.
+        int rounds = 0;
+        for (; rounds < 100 && weak.IsAlive; rounds++)
         {
-            GC.Collect();
+            GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true);
             GC.WaitForPendingFinalizers();
+            if (weak.IsAlive)
+            {
+                Thread.Sleep(20);
+            }
         }
 
+        Harness.Report($"module context unloaded after {rounds} collections");
         Assert.False(weak.IsAlive);
     }
 
