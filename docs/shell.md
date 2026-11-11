@@ -201,5 +201,5 @@ poke: drag an agent), `add_agent`, `remove_agent`, `stop_agent` and `teleport_ag
 `samples/CrowdHost` is a program with a probe whose crowd the shell attaches to. The `combo-physics` and `combo-crowd` pair is one scenario run by both libraries,
 for a session that holds a physics world and a crowd on one time axis.
 
-Until the module package is on nuget.org, restore needs the folder that holds it: set `ONESCOPE_FEEDS` to that folder (several are separated by `;`)
-before `dotnet restore`. The navigation module was built against an early preview of the SDK; `DrawStyle` keeps its four-argument constructor so such a build still loads.
+The module restores from nuget.org; to try an unpublished build of it, set `ONESCOPE_FEEDS` to the folder that holds it (several are separated by `;`)
+before `dotnet restore`. `DrawStyle` keeps its four-argument constructor so modules built against early previews of the SDK still load.

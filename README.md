@@ -7,7 +7,7 @@ Time is a step index. Seeking to step *k* lands on exactly the state that playin
 ## Install
 
 ```
-dotnet tool install --global RecursiveAI.OneScope.Tool --prerelease
+dotnet tool install --global RecursiveAI.OneScope.Tool
 onescope --help
 ```
 
@@ -79,7 +79,7 @@ dotnet test --project tests/OneScope.Attach.Tests -c Release
 dotnet test --project tests/OneScope.App.Tests -c Release
 ```
 
-Build output goes to `artifacts/` (ignored), or to the directory named by `ONESCOPE_ARTIFACTS`. The bundled physics and navigation modules, and `RecursiveAI.OnePath` 1.2.0, are restored from nuget.org; until they are published there, point `ONESCOPE_FEEDS` at a folder that holds them (several folders are separated by `;`). Captures are compared with goldens that come from the lavapipe software renderer; on another renderer the tests check that three runs agree with each other.
+Build output goes to `artifacts/` (ignored), or to the directory named by `ONESCOPE_ARTIFACTS`. Everything restores from nuget.org; to build against unpublished builds of the modules, point `ONESCOPE_FEEDS` at a folder that holds them (several folders are separated by `;`). Captures are compared with goldens that come from the lavapipe software renderer; on another renderer the tests check that three runs agree with each other.
 
 Documentation index: [docs/README.md](docs/README.md).
 

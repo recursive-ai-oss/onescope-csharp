@@ -7,7 +7,7 @@ Everything the app, samples and tests reference comes from nuget.org: onegame's 
 `RecursiveAI.OnePhysics.Scope`, `RecursiveAI.OnePath` and `RecursiveAI.OnePath.Scope` and asks nuget.org whether each exists. When one is missing it fails with a single
 message naming it, so a missing package is not mistaken for a restore problem. The `app` jobs of the CI workflow and the tool release run it first. The three libraries (SDK, probe and attach) and their tests need none of these packages.
 
-To build before those packages are published, put them in a folder and point `ONESCOPE_FEEDS` at it (several folders are separated by `;`):
+To build against unpublished builds of those packages, put them in a folder and point `ONESCOPE_FEEDS` at it (several folders are separated by `;`):
 
 ```
 export ONESCOPE_FEEDS=/path/to/feed
