@@ -19,7 +19,14 @@ internal sealed partial class ScopeEndpoint
             throw new ControlException("rejected", $"View {index} is not on screen; show it (view, layout) and capture a frame so it is laid out.");
         }
 
-        return ViewPicking.Round(element.AbsoluteBounds);
+        OneGame.UI.Rect rect = ViewPicking.Round(element.AbsoluteBounds);
+        if (rect.Width < 1 || rect.Height < 1)
+        {
+            // Before the first frame the view has no size, and a projection onto it would be infinite.
+            throw new ControlException("rejected", $"View {index} has not been laid out yet; capture a frame (capture_frame) or run a window frame first.");
+        }
+
+        return rect;
     }
 
     private string PickOp(Args a)

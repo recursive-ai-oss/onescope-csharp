@@ -28,6 +28,7 @@ const int Steps = 64;
 
 Record2D(dir);
 Record3D(dir);
+Record3DLimits(dir);
 return 0;
 
 static void WriteHashes(string path, ulong[] hashes) =>
@@ -189,4 +190,47 @@ void Record3D(string dir)
     using var text = new StringWriter();
     Scene.FromSnapshot(3, 1, snapshot).Write(text);
     File.WriteAllText(Path.Combine(dir, "physics-3d.scene"), text.ToString());
+}
+
+// A 3D world with one limited joint of each kind that has a limit to draw: a hinge, a slider and a cone. It is its own file so the
+// stacks above keep their recorded hashes.
+void Record3DLimits(string dir)
+{
+    var world = new PhysicsWorld3D(new WorldOptions3D { WorldId = 8 });
+    world.AddBox(new Vector3F(40, 1, 40), new Vector3D(0, -0.5, 0), type: BodyType.Static);
+
+    // A door on a hinge that may swing between -0.6 and 0.9 radians.
+    B3 post = world.AddBox(new Vector3F(0.3f, 4, 0.3f), new Vector3D(-6, 2, 0), type: BodyType.Static);
+    B3 door = world.AddBox(new Vector3F(2.4f, 3, 0.2f), new Vector3D(-4.8, 2, 0));
+    var hinge = world.AddHinge(post, door, new Vector3D(-6, 2, 0), new Vector3F(0, 1, 0));
+    hinge.SetLimits(-0.6f, 0.9f);
+    hinge.EnableLimit = true;
+
+    // A block on a slider that may travel 2 metres either way along x.
+    B3 rail = world.AddBox(new Vector3F(0.3f, 0.3f, 0.3f), new Vector3D(0, 4, 0), type: BodyType.Static);
+    B3 block = world.AddBox(new Vector3F(1, 1, 1), new Vector3D(0.5, 4, 0));
+    var slider = world.AddSlider(rail, block, new Vector3D(0, 4, 0), new Vector3F(1, 0, 0));
+    slider.SetLimits(-2f, 2f);
+    slider.EnableLimit = true;
+
+    // A pendulum on a cone joint.
+    B3 hook = world.AddBox(new Vector3F(0.3f, 0.3f, 0.3f), new Vector3D(6, 7, 0), type: BodyType.Static);
+    B3 bob = world.AddBox(new Vector3F(0.6f, 1.6f, 0.6f), new Vector3D(6.4, 5.5, 0));
+    world.AddCone(hook, bob, new Vector3D(6, 7, 0), new Vector3F(0, -1, 0), 0.7f);
+    world.Step(Dt);
+
+    using var stream = new MemoryStream();
+    var hashes = new ulong[Steps + 1];
+    using (world.StartRecording(stream))
+    {
+        hashes[0] = world.ComputeHash();
+        for (int i = 0; i < Steps; i++)
+        {
+            world.Step(Dt);
+            hashes[i + 1] = world.ComputeHash();
+        }
+    }
+
+    File.WriteAllBytes(Path.Combine(dir, "physics-3d-limits.oppr"), stream.ToArray());
+    WriteHashes(Path.Combine(dir, "physics-3d-limits.hashes"), hashes);
 }

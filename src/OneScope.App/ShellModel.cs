@@ -463,8 +463,9 @@ internal sealed partial class ShellModel
 
         if (!found)
         {
-            found = DrawBounds.TryCompute(list, item => item.Entity.IsSome && kinds.TryGetValue(item.Entity.Value, out string? k) && k is not ("static" or "sensor"), out min, out max)
-                || DrawBounds.TryComputeWithoutScenery(list, out min, out max);
+            // Tagged items of a module that has no static kind may still include a floor far larger than the rest, so scenery is left out of them too.
+            found = DrawBounds.TryComputeWithoutScenery(list, item => item.Entity.IsSome && kinds.TryGetValue(item.Entity.Value, out string? k) && k is not ("static" or "sensor"), out min, out max)
+                || DrawBounds.TryComputeWithoutScenery(list, null, out min, out max);
         }
 
         if (!found)
@@ -973,12 +974,12 @@ internal static class DrawBounds
     /// The box around the items that are not scenery, for modules that don't tag what they draw: items much larger than the median item are left out,
     /// so a floor several times the size of everything on it doesn't set the frame.
     /// </summary>
-    public static bool TryComputeWithoutScenery(DrawList list, out Vector3 min, out Vector3 max)
+    public static bool TryComputeWithoutScenery(DrawList list, Func<DrawItem, bool>? accept, out Vector3 min, out Vector3 max)
     {
         var sizes = new List<float>();
         foreach (ref readonly DrawItem item in list.Items)
         {
-            if (ItemBounds(list, item, out Vector3 a, out Vector3 b))
+            if ((accept is null || accept(item)) && ItemBounds(list, item, out Vector3 a, out Vector3 b))
             {
                 sizes.Add((b - a).Length());
             }
@@ -992,7 +993,7 @@ internal static class DrawBounds
 
         sizes.Sort();
         float limit = Math.Max(sizes[sizes.Count / 2], 1e-6f) * SceneryFactor;
-        return TryCompute(list, item => ItemBounds(list, item, out Vector3 a, out Vector3 b) && (b - a).Length() <= limit, out min, out max);
+        return TryCompute(list, item => (accept is null || accept(item)) && ItemBounds(list, item, out Vector3 a, out Vector3 b) && (b - a).Length() <= limit, out min, out max);
     }
 
     private static bool ItemBounds(DrawList list, in DrawItem item, out Vector3 lo, out Vector3 hi)

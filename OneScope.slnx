@@ -14,6 +14,7 @@
   </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/ProbeSample/ProbeSample.csproj" />
+    <Project Path="samples/PhysicsHost/PhysicsHost.csproj" />
   </Folder>
   <Folder Name="/fuzz/">
     <Project Path="fuzz/AttachFuzz/AttachFuzz.csproj" />
