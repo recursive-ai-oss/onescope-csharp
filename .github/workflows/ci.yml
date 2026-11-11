@@ -98,9 +98,9 @@ jobs:
             echo "::warning::azure.archive.ubuntu.com does not resolve; using archive.ubuntu.com"
             echo "http://archive.ubuntu.com/ubuntu/ priority:1" | sudo tee /etc/apt/apt-mirrors.txt > /dev/null
           fi
-          apt_options="-o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20"
-          sudo apt-get $apt_options update
-          sudo apt-get $apt_options install -y mesa-vulkan-drivers libvulkan1
+          apt_options=(-o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20)
+          sudo apt-get "${apt_options[@]}" update
+          sudo apt-get "${apt_options[@]}" install -y mesa-vulkan-drivers libvulkan1
           echo "VK_DRIVER_FILES=/usr/share/vulkan/icd.d/lvp_icd.json" >> "$GITHUB_ENV"
 
       - name: Build
