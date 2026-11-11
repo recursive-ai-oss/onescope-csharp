@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>$(OneScopePackagePrefix).Sdk</AssemblyName>
+    <RootNamespace>$(OneScopeRootNamespace).Sdk</RootNamespace>
+    <PackageId>$(OneScopePackagePrefix).Sdk</PackageId>
+    <Description>The module contract for onescope: worlds, time and history, a neutral draw list, timeline tracks, pokes and findings. BCL only.</Description>
+    <IsPackable>true</IsPackable>
+    <IsAotCompatible>true</IsAotCompatible>
+    <IsTrimmable>true</IsTrimmable>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+</Project>

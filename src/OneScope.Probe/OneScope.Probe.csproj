@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>$(OneScopePackagePrefix).Probe</AssemblyName>
+    <RootNamespace>$(OneScopeRootNamespace).Probe</RootNamespace>
+    <PackageId>$(OneScopePackagePrefix).Probe</PackageId>
+    <Description>A probe a host program calls to stream a library's replay records to a viewer. BCL only; costs one branch per call when nothing is connected.</Description>
+    <IsPackable>true</IsPackable>
+    <IsAotCompatible>true</IsAotCompatible>
+    <IsTrimmable>true</IsTrimmable>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+</Project>

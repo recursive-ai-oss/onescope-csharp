@@ -1,0 +1,34 @@
+<Project>
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <!-- Identity shared by every package and namespace. -->
+  <PropertyGroup>
+    <OneScopePackagePrefix>RecursiveAI.OneScope</OneScopePackagePrefix>
+    <OneScopeRootNamespace>OneScope</OneScopeRootNamespace>
+    <VersionPrefix>0.1.0</VersionPrefix>
+    <VersionSuffix>preview.1</VersionSuffix>
+    <Authors>Recursive AI, LLC</Authors>
+    <Copyright>Copyright (c) Recursive AI, LLC</Copyright>
+    <PackageLicenseExpression>MIT OR Apache-2.0</PackageLicenseExpression>
+  </PropertyGroup>
+
+  <!-- All build output goes to ONESCOPE_ARTIFACTS when set, else the repo's ignored artifacts/. -->
+  <PropertyGroup>
+    <OneScopeArtifacts Condition="'$(ONESCOPE_ARTIFACTS)' != ''">$([MSBuild]::EnsureTrailingSlash('$(ONESCOPE_ARTIFACTS)'))</OneScopeArtifacts>
+    <OneScopeArtifacts Condition="'$(OneScopeArtifacts)' == ''">$(MSBuildThisFileDirectory)artifacts/</OneScopeArtifacts>
+    <BaseOutputPath>$(OneScopeArtifacts)bin/$(MSBuildProjectName)/</BaseOutputPath>
+    <BaseIntermediateOutputPath>$(OneScopeArtifacts)obj/$(MSBuildProjectName)/</BaseIntermediateOutputPath>
+    <PackageOutputPath>$(OneScopeArtifacts)pack/</PackageOutputPath>
+  </PropertyGroup>
+</Project>

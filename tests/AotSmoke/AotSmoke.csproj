@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>$(OneScopeRootNamespace).AotSmoke</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <PublishAot>true</PublishAot>
+    <IsAotCompatible>true</IsAotCompatible>
+    <TrimmerSingleWarn>false</TrimmerSingleWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\OneScope.Sdk\OneScope.Sdk.csproj" />
+    <ProjectReference Include="..\..\src\OneScope.Probe\OneScope.Probe.csproj" />
+    <ProjectReference Include="..\OneScope.TestModule\OneScope.TestModule.csproj" />
+  </ItemGroup>
+</Project>

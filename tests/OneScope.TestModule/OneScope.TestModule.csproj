@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>$(OneScopeRootNamespace).TestModule</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <IsAotCompatible>true</IsAotCompatible>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\OneScope.Sdk\OneScope.Sdk.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,15 @@
+/*
+!/.gitignore
+!/global.json
+!/Directory.Build.props
+!/Directory.Packages.props
+!/OneScope.slnx
+!/LICENSE-MIT
+!/LICENSE-APACHE
+!/THIRD-PARTY-NOTICES.md
+!/README.md
+!/src
+!/tests
+!/tools
+!/docs
+!/testdata

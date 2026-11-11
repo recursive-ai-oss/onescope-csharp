@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>$(OneScopeRootNamespace).Tools</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\tests\OneScope.TestModule\OneScope.TestModule.csproj" />
+  </ItemGroup>
+</Project>
