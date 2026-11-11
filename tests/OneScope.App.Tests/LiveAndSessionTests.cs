@@ -78,14 +78,14 @@ internal sealed class MiniHost : ISnapshotSource, IDisposable
 [Collection("shell")]
 public sealed class LiveAndSessionTests
 {
-    private static string NewDir()
+    internal static string NewDir()
     {
         string dir = Path.Combine(Path.GetTempPath(), "osl-" + Guid.NewGuid().ToString("N")[..8]);
         Directory.CreateDirectory(dir);
         return dir;
     }
 
-    private static void WaitFor(Func<bool> condition, string what)
+    internal static void WaitFor(Func<bool> condition, string what)
     {
         DateTime end = DateTime.UtcNow.AddSeconds(20);
         while (!condition())
@@ -115,7 +115,7 @@ public sealed class LiveAndSessionTests
         Assert.Equal("oscope.test", probe.GetProperty("module").GetString());
 
         // Attach by pid; the call waits for the host's snapshot, so run it where the host's thread can answer.
-        JsonElement attached = await Task.Run(() => h.Call("attach", $$"""{"pid":{{Environment.ProcessId}}}"""));
+        JsonElement attached = await Task.Run(() => h.Call("attach", $$"""{"pid":{{Environment.ProcessId}},"wait":10000}"""));
         long start = attached.GetProperty("startStep").GetInt64();
         Assert.True(start >= 800, $"start {start}");
         Assert.Equal(start, attached.GetProperty("step").GetInt64());
@@ -195,7 +195,7 @@ public sealed class LiveAndSessionTests
         using Harness h = new();
         host.Start();
         WaitFor(() => host.Steps >= 300, "the host to run");
-        await Task.Run(() => h.Call("attach", JsonSerializer.Serialize(new { socket = host.SocketPath })));
+        await Task.Run(() => h.Call("attach", JsonSerializer.Serialize(new { socket = host.SocketPath, wait = 10000 })));
         host.Dispose();
         SourceSession live = h.Shell.Sources[0];
         WaitFor(() => { h.Shell.PumpLive(); return live.LiveEnded is not null; }, "the stream to end");
@@ -213,16 +213,17 @@ public sealed class LiveAndSessionTests
     [Fact]
     public async Task AttachToSomethingThatIsNotAProbeGivesTypedErrors()
     {
+        // A wait long enough that the failure comes back from the call itself; with the default wait it would be reported under attaching.
         string dir = NewDir();
         using Harness h = new();
 
-        ControlException none = Assert.Throws<ControlException>(() => h.Call("attach", JsonSerializer.Serialize(new { socket = Path.Combine(dir, "nothing.sock") })));
+        ControlException none = Assert.Throws<ControlException>(() => h.Call("attach", JsonSerializer.Serialize(new { socket = Path.Combine(dir, "nothing.sock"), wait = 10000 })));
         Assert.Equal("not_found", none.Code);
         Assert.Contains("nothing.sock", none.Message);
 
         string regular = Path.Combine(dir, "plain.sock");
         File.WriteAllText(regular, "not a socket");
-        Assert.Equal("not_found", Assert.Throws<ControlException>(() => h.Call("attach", JsonSerializer.Serialize(new { socket = regular }))).Code);
+        Assert.Equal("not_found", Assert.Throws<ControlException>(() => h.Call("attach", JsonSerializer.Serialize(new { socket = regular, wait = 10000 }))).Code);
 
         // A socket whose program died: the file is left behind and nobody listens.
         string dead = Path.Combine(dir, "dead.sock");
@@ -232,7 +233,7 @@ public sealed class LiveAndSessionTests
             l.Listen(1);
         }
 
-        ControlException gone = Assert.Throws<ControlException>(() => h.Call("attach", JsonSerializer.Serialize(new { socket = dead })));
+        ControlException gone = Assert.Throws<ControlException>(() => h.Call("attach", JsonSerializer.Serialize(new { socket = dead, wait = 10000 })));
         Assert.Equal("not_found", gone.Code);
         Assert.Contains("dead.sock", gone.Message);
 
@@ -247,13 +248,13 @@ public sealed class LiveAndSessionTests
             c.Send("HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n"u8.ToArray());
             Thread.Sleep(200);
         }, TestContext.Current.CancellationToken);
-        ControlException bad = Assert.Throws<ControlException>(() => h.Call("attach", JsonSerializer.Serialize(new { socket = liar })));
+        ControlException bad = Assert.Throws<ControlException>(() => h.Call("attach", JsonSerializer.Serialize(new { socket = liar, wait = 10000 })));
         Assert.Equal("bad_stream", bad.Code);
         Assert.Contains("liar.sock", bad.Message);
         await accepter;
 
         // A pid with no probe.
-        ControlException pid = Assert.Throws<ControlException>(() => h.Call("attach", $$"""{"pid":1,"dir":{{JsonSerializer.Serialize(dir)}}}"""));
+        ControlException pid = Assert.Throws<ControlException>(() => h.Call("attach", $$"""{"pid":1,"wait":10000,"dir":{{JsonSerializer.Serialize(dir)}}}"""));
         Assert.Equal("not_found", pid.Code);
         Assert.Empty(h.Shell.Sources);
         Directory.Delete(dir, true);

@@ -11,11 +11,30 @@ internal sealed class Painter
     /// <summary>Starts a frame's painting on <paramref name="canvas"/>.</summary>
     public void Begin(OverlayCanvas canvas) => _canvas = canvas;
 
+    private float _clipLeft = float.NegativeInfinity;
+    private float _clipRight = float.PositiveInfinity;
+
+    /// <summary>Limits fills to the horizontal band from <paramref name="left"/> to <paramref name="right"/> until <see cref="ClearClip"/>; text is not clipped.</summary>
+    public void ClipX(float left, float right)
+    {
+        _clipLeft = left;
+        _clipRight = right;
+    }
+
+    /// <summary>Removes the band set by <see cref="ClipX"/>.</summary>
+    public void ClearClip()
+    {
+        _clipLeft = float.NegativeInfinity;
+        _clipRight = float.PositiveInfinity;
+    }
+
     public void Fill(float x, float y, float width, float height, UiColor color)
     {
-        if (width > 0 && height > 0)
+        float x0 = Math.Max(x, _clipLeft);
+        float x1 = Math.Min(x + width, _clipRight);
+        if (x1 > x0 && height > 0)
         {
-            _canvas?.Fill(x, y, width, height, color);
+            _canvas?.Fill(x0, y, x1 - x0, height, color);
         }
     }
 

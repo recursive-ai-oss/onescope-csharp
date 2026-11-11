@@ -148,6 +148,12 @@ internal static class Program
                     w.WriteString(attach ? "socket" : "path", o.Positional[0]);
                 }
 
+                if (attach)
+                {
+                    // Nothing is drawing yet at start-up, so the command line waits for the host's snapshot instead of returning a pending state.
+                    w.WriteNumber("wait", ShellModel.DefaultAttachTimeoutMilliseconds);
+                }
+
                 if (o.Value("keyframe") is string k && int.TryParse(k, NumberStyles.None, CultureInfo.InvariantCulture, out int interval))
                 {
                     w.WriteNumber("keyframeInterval", interval);

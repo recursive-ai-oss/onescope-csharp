@@ -19,6 +19,7 @@ internal sealed class ScopeGame : GameDefinition
     private const float RowHeight = 22;
     private readonly ShellModel _shell;
     private KitHost? _kit;
+    private PokePanel? _pokes;
     private Action<Func<string, Element?>>? _attachFind;
     private readonly List<OverlayChoice> _overlayChoices = [];
     private (int View, int Source, int Version) _overlayKey = (-1, -1, -1);
@@ -111,6 +112,8 @@ internal sealed class ScopeGame : GameDefinition
                 UiKit.Button(">", () => Nudge(1), "step-forward"),
                 UiKit.Button(">|", () => shell.Seek(shell.MaxSteps), "seek-end"),
                 UiKit.Button("Fork", ForkActive, "fork"),
+                UiKit.Button("Frame", () => FrameActive(selection: false), "frame"),
+                UiKit.Button("Frame sel.", () => FrameActive(selection: true), "frame-selection"),
                 UiKit.ToggleButton("Live", () => shell.Sources.Any(x => x.Live is not null && x.Follow), on => SetFollow(on), "follow-live").BindVisible(() => shell.HasLive),
                 Ui.Label("").Named("step-label").BindText(() => shell.Version, _ => $"step {shell.Step} / {shell.MaxSteps}").Margin(0, 10),
                 Ui.Each(OverlayChoices, c => UiKit.ToggleButton(c.Name, () => OverlayOn(c.Id), on => SetOverlay(c.Id, on), "overlay/" + c.Id)),
@@ -154,23 +157,38 @@ internal sealed class ScopeGame : GameDefinition
             id: "inspector",
             version: () => shell.Version);
         Element inspector = Ui.Column(Title("Inspector").BindText(() => shell.Selected.Value, id => id == 0 ? "Inspector" : "Inspector  ·  entity " + id), props.Grow(1).Style(st => st.MinHeight(Length.Px(0))))
-            .Width(Length.Px(320)).Class("panel").Named("inspector-panel")
+            .Grow(1).Class("panel").Named("inspector-panel")
             .BindVisible(() => shell.Solo < 0 && shell.Panels.Inspector);
 
-        Element main = Ui.Row(entities, views, inspector).Grow(1).Style(st => st.MinHeight(Length.Px(0))).Gap(Length.Px(2));
+        _pokes = new PokePanel(shell, RunOp);
+        Element right = Ui.Column(_pokes.Build(), inspector).Width(Length.Px(320)).Gap(Length.Px(2)).Named("right-column")
+            .BindVisible(() => shell.Solo < 0 && (shell.Panels.Inspector || _pokes.Visible));
+
+        Element main = Ui.Row(entities, views, right).Grow(1).Style(st => st.MinHeight(Length.Px(0))).Gap(Length.Px(2));
 
         Element timeline = Ui.Box().Height(Length.Px(190)).Shrink(0).Class("panel").Named("timeline").Focusable()
             .BindVisible(() => shell.Solo < 0 && shell.Panels.Timeline);
         timeline.On(UiEventKind.PointerDown, (e, ev) => TimelinePointer(e, ev, true));
         timeline.On(UiEventKind.PointerMove, (e, ev) => TimelinePointer(e, ev, false));
         timeline.On(UiEventKind.KeyDown, (e, ev) => TimelineKey(ev));
+        timeline.On(UiEventKind.Wheel, (e, ev) => TimelineWheel(e, ev));
+
+        Element timelineBar = Ui.Row(
+                UiKit.Button("Fit all", () => RunOp(_shell.FitTimelineAll), "timeline-fit-all"),
+                UiKit.Button("Fit fork", FitFork, "timeline-fit-fork"),
+                UiKit.Button("Zoom in", () => ZoomAtCursor(2), "timeline-zoom-in"),
+                UiKit.Button("Zoom out", () => ZoomAtCursor(0.5), "timeline-zoom-out"),
+                UiKit.Button("<<", () => RunOp(() => _shell.PanTimeline(-Math.Max(_shell.TimelineRange.Length / 4, 1))), "timeline-pan-left"),
+                UiKit.Button(">>", () => RunOp(() => _shell.PanTimeline(Math.Max(_shell.TimelineRange.Length / 4, 1))), "timeline-pan-right"))
+            .Align(Align.Center).Gap(Length.Px(4)).Padding(Length.Px(2), Length.Px(6)).Shrink(0).Class("panel").Named("timeline-bar")
+            .BindVisible(() => shell.Solo < 0 && shell.Panels.Timeline);
 
         ListView<LogRow> log = UiKit.TextList(() => shell.Log(), r => LogText(r), Length.Px(RowHeight), null, null, "log");
         Element logPanel = Ui.Column(Title("Event log"), log.Grow(1).Style(st => st.MinHeight(Length.Px(0))))
-            .Height(Length.Px(130)).Shrink(0).Class("panel").Named("log-panel")
+            .Height(Length.Px(100)).Shrink(0).Class("panel").Named("log-panel")
             .BindVisible(() => shell.Solo < 0 && shell.Panels.Log);
 
-        return Ui.Column(toolbar, main, timeline, logPanel).Class("shell").Style(s => s.Anchor(AnchorPoint.Fill)).Gap(Length.Px(2));
+        return Ui.Column(toolbar, main, timelineBar, timeline, logPanel).Class("shell").Style(s => s.Anchor(AnchorPoint.Fill)).Gap(Length.Px(2));
     }
 
     private int _selectionVersion = -1;
@@ -446,10 +464,59 @@ internal sealed class ScopeGame : GameDefinition
 
         if (_shell.Sources.Count > 0)
         {
-            _shell.Seek(TimelineLayout.StepAt(element.AbsoluteBounds, ev.X, new TimeRange(_shell.MinSteps, _shell.MaxSteps)));
+            _shell.Seek(TimelineLayout.StepAt(element.AbsoluteBounds, ev.X, _shell.TimelineRange));
         }
 
         return true;
+    }
+
+    /// <summary>Zooms the timeline around the pointer; the wheel's direction decides in or out.</summary>
+    private bool TimelineWheel(Element element, UiEvent ev)
+    {
+        if (_shell.Sources.Count == 0)
+        {
+            return false;
+        }
+
+        long at = TimelineLayout.StepAt(element.AbsoluteBounds, ev.X, _shell.TimelineRange);
+        RunOp(() => _shell.ZoomTimeline(Math.Pow(1.25, ev.DeltaY), at));
+        return true;
+    }
+
+    private void ZoomAtCursor(double factor)
+    {
+        if (_shell.Sources.Count > 0)
+        {
+            RunOp(() => _shell.ZoomTimeline(factor, Math.Clamp(_shell.Step, _shell.TimelineRange.Min, _shell.TimelineRange.Max)));
+        }
+    }
+
+    /// <summary>Shows the active source's fork, or the fork of the same file that was made last when the active source is the original.</summary>
+    private void FitFork()
+    {
+        if (_shell.Sources.Count == 0)
+        {
+            return;
+        }
+
+        SourceSession s = _shell.Sources[Math.Min(_shell.ActiveSource, _shell.Sources.Count - 1)];
+        SourceSession? fork = s.IsFork ? s : _shell.Sources.LastOrDefault(x => x.IsFork && ReferenceEquals(x.Root, s));
+        if (fork is null)
+        {
+            _shell.AddLog(s.Index, "error", "There is no fork to fit; fork the source first.");
+            _shell.Touch();
+            return;
+        }
+
+        RunOp(() => _shell.FitTimelineFork(fork));
+    }
+
+    private void FrameActive(bool selection)
+    {
+        if (ActiveView() is { } v)
+        {
+            RunOp(() => _shell.FrameView(v, selection));
+        }
     }
 
     private bool TimelineKey(UiEvent ev)
@@ -468,6 +535,19 @@ internal sealed class ScopeGame : GameDefinition
                 return true;
             case "End":
                 Nudge(_shell.MaxSteps);
+                return true;
+            case "+":
+            case "=":
+                ZoomAtCursor(2);
+                return true;
+            case "-":
+                ZoomAtCursor(0.5);
+                return true;
+            case "0":
+                RunOp(_shell.FitTimelineAll);
+                return true;
+            case "f":
+                FitFork();
                 return true;
             case " ":
                 _shell.SetSpeed(_shell.SpeedMilliStepsPerSecond == 0 ? 60_000 : 0);

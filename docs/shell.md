@@ -35,8 +35,8 @@ Hashes are 16 lowercase hex digits. Entity ids are the module's integers. Every 
 | Operation | Arguments | Result |
 |---|---|---|
 | `open` | `path`, `module`?, `moduleAssembly`?, `keyframeInterval`?, `scan`? | the new source: `source`, `name`, `path`, `module`, `dimensions`, `unit {name, metres}`, `steps`, `axes`, `overlays`, `tracks`, `pokes`, `step`, `hash`, `keyframeInterval`, `scannedThrough`, `views` |
-| `sources` | | `step`, `start`, `steps`, `speed`, `sources[]` (the `open` fields plus `keyframes`, `keyframeBytes`, `findings`, and for a live source `live {state, endedBecause?, follow, hostPid, library, format, firstStep, newestStep}`, and when the file recorded hashes `recordedHashes {through, matches: all|so far|no, firstMismatch?}`) |
-| `attach` | none: list. `pid` or `socket` to connect; `dir`?, `keyframeInterval`?, `moduleAssembly`? | list: `probes[] {pid, socket, module, library, format, moduleLoaded}`, `removedStale[]`, `unreadable[]`. Connect: the new source as for `open`, plus `live`. Errors: `not_found`, `timeout`, `bad_stream`, `no_module`, `bad_format` |
+| `sources` | | `step`, `start`, `steps`, `speed`, `sources[]` (the `open` fields plus `keyframes`, `keyframeBytes`, `findings`, and for a live source `live {state: streaming|ended|disconnected|failed|capped|closed, endedBecause?, follow, hostPid, library, format, firstStep, newestStep, recordBytes, capBytes}`, and when the file recorded hashes `recordedHashes {through, matches: all|so far|no, firstMismatch?}`), and `attaching[]`: attaches still connecting or failed (`attach`, `state`, `target`, `startFrame`, `frame`, and for a failure `errorCode`, `error`) |
+| `attach` | none: list. `pid` or `socket` to connect; `dir`?, `keyframeInterval`?, `moduleAssembly`?, `wait`? (ms the call may block, default 100), `timeout`? (ms the connection may take, default 30000), `capBytes`? (received record bytes kept, default 268435456) | list: `probes[] {pid, socket, module, library, format, moduleLoaded}`, `removedStale[]`, `unreadable[]`. Connect: the new source as for `open`, plus `live`, when it is ready within `wait`; otherwise `{attach, state: "connecting", target, startFrame, frame}` and the source appears when the host has taken its snapshot. Errors within `wait`: `not_found`, `timeout`, `bad_stream`, `no_module`, `bad_format`; later ones are listed under `sources.attaching` |
 | `follow` | `source`? (default the first live one), `on`? | `source`, `live`, `step`; on moves the cursor to the newest step |
 | `session_save` | `path` (inside the output folder), `embed`? (embed opened files too) | `path`, `bytes`, `sha256`, `cursor`, `sources[] {source, name, kind: referenced\|embedded, live, parent?, forkStep?, bytes}`, `layoutBytes` |
 | `session_open` | `path`, `moduleAssembly`? | `path`, `step`, `views`, `sources[] {source, label, module, startStep, steps, step, hash, parent?, forkStep?, divergence?}`. Replaces everything open; nothing changes on failure (`not_found`, `bad_session`) |
@@ -54,7 +54,8 @@ Hashes are 16 lowercase hex digits. Entity ids are the module's integers. Every 
 | `replay_save` | `source`, `path` (a new file in the output folder) | `path`, `bytes`, `sha256`, `steps`, `divergence` |
 | `pick` | `x`, `y` (window pixels), `view`? | `view`, `source`, `entity` or null, `point` (world) |
 | `project` | `entity`, `view`? or `source`? | `view`, `entity`, `x`, `y` (window pixels), `onScreen`, `world` |
-| `view` | nothing to list; `add` (`2d`/`3d`), or `index` with `remove`, `source`, `target`, `halfHeight` (2D), `distance`, `yaw`, `pitch` (3D), `frame`, `wireframe`, `grid`, `active` | `active`, `views[]` |
+| `view` | nothing to list; `add` (`2d`/`3d`), or `index` with `remove`, `source`, `target`, `halfHeight` (2D), `distance`, `yaw`, `pitch` (3D), `frame` (the moving bodies; see Framing), `frameSelection` (the selected entity), `wireframe`, `grid`, `active` | `active`, `views[]` |
+| `timeline` | `fit`? (`all` or `fork`, with `source`?), `from`? and `to`?, `zoom`? (factor above 1 shows fewer steps) with `center`?, `pan`? (steps); nothing reports | `from`, `to`, `zoomed`, `axisFrom`, `axisTo`, `step`. View only: no world moves |
 | `layout` | `entities`?, `inspector`?, `timeline`?, `log`? (booleans) | the panel states |
 | `capture_frame` | `path`? (inside the output folder), `size`? (`720p`, `1080p`, `WxH`), `scale`?, `view`? (that view alone, full size), `presented`? | `path`, `width`, `height`, `scale`, `sha256`, `renderer`, `target`, `step`, `hashes[]`; over MCP the PNG travels as image content |
 | `capture_sequence` | `dir`, `count` (1 to 3600), `stride`? (default 1), `axis`?, `source`?, `size`?, `scale`?, `view`? | `dir`, `frames`, `ended`, `manifest`, `renderer`, `step`; `manifest.json` lists each frame's `step`, `position`, `hash` and `sha256` |
@@ -87,9 +88,33 @@ scrubs and forks like a file, and its history keeps growing while you scrub (`fo
 the open sources, the cursor and the layout to a `.oscope` file (format in `session-file.md`): opened files by path and SHA-256, forks and live sources embedded
 with the history received so far. `session_open` (or `onescope open x.oscope`) replaces the shell's state with it: forks come back as working forks that can be poked and
 stepped again, and views, cameras, panels, selection and the event log come back as they were, so a capture taken after reopening is byte-identical to one taken before saving.
+A live source also has a viewer-side cap: the viewer keeps at most `capBytes` of received records (each counted with 48 bytes of bookkeeping). When the next record would
+pass it the viewer stops and disconnects: the source's state is `capped`, `endedBecause` says where, the event log gets an error row, and what was received stays usable
+(seek, fork, save). The program never notices beyond a viewer that left.
+
 The layout is a small JSON object (`version 1`: panels, active source and view, selection, speed, source labels, views with cameras, log rows); a layout that is not
 valid, or that points at a source or view that is not there, is refused as `bad_session` and leaves the shell as it was. Other errors: `bad_session` also covers a
 malformed or hostile session file, a missing module, or a referenced file that changed.
+
+## The window
+
+The toolbar has the transport, Fork, **Frame** and **Frame sel.**, and the overlay toggles. Beside the inspector, a **Pokes** panel appears when the active source
+is a fork: one button per poke the module declares, then a field for each of its typed parameters (an entity takes an id or, when empty, the selected entity; a
+vector takes `x,y,z` and starts at the centre of the active view; integers, numbers, text and booleans as typed), **Apply** and **Step**. With *Step after poke* on, Apply
+queues the poke and runs one step of the fork (as `poke` with `step:true`); with it off the poke waits for **Step**. A refused entry goes to the event log and changes nothing.
+The panel is built from the module's declarations, so a module's new poke shows up without an app change. Pressing and dragging a body on a fork is the drag poke, as before.
+
+Above the timeline, **Fit all**, **Fit fork**, **Zoom in/out** and **<< >>** change which steps it spans; the wheel zooms around the pointer, and `+`, `-`, `0` (fit all) and
+`f` (fit fork) do the same with the timeline focused. A zoomed timeline shows its range at the bottom right; clicking it seeks to the step under the pointer. `Fit fork`
+spans from a little before the fork step to a little after the end of the fork's recording, so a five-step fork in a ten-thousand-step history takes the whole width.
+Zoom is a view setting: it is not saved in a session and never touches a world.
+
+### Framing
+
+A new view, `view … frame` and the **Frame** button place the camera on what the view draws with its own overlays, leaving out static and sensor entities and drawings
+that belong to no entity (a floor, a trigger zone, bounds) while anything else is drawn. A module that tags nothing (draw items with no entity) is framed without
+items much larger than the typical one (eight times the median extent), which drops a ground plane. **Frame sel.** (`frameSelection`) frames the selected entity and
+falls back to the same default when the view draws nothing for it.
 
 ## Pictures
 

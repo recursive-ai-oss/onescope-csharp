@@ -85,6 +85,9 @@ internal sealed class SourceSession
     /// <summary>What ended a live source's stream, once it has ended; null while it streams.</summary>
     public string? LiveEnded { get; set; }
 
+    /// <summary>Whether a live source stopped because the viewer reached its cap on received records.</summary>
+    public bool LiveCapped { get; set; }
+
     /// <summary>The opened file at the root of this source's family of forks.</summary>
     public SourceSession Root => Parent?.Root ?? this;
 
@@ -405,13 +408,48 @@ internal sealed partial class ShellModel
         return mask;
     }
 
-    /// <summary>Places a view's camera so everything the source draws at the cursor fits.</summary>
-    public void FrameView(ViewState view)
+    /// <summary>
+    /// Places a view's camera on what matters: the selected entity when <paramref name="selection"/> is set and the source draws it, otherwise the
+    /// bodies that move. Static and sensor entities (a ground plane, a trigger zone) and drawings that belong to no entity (bounds, grids) are left out
+    /// while anything else is drawn, so a huge floor doesn't shrink the bodies to dots. A module that tags nothing is framed without items far larger than
+    /// the typical one. Only what the view's overlays draw counts.
+    /// </summary>
+    public void FrameView(ViewState view, bool selection = false)
     {
         SourceSession s = Source(view.Source);
         var list = new DrawList();
-        s.History.View.Draw(list, new DrawRequest(ulong.MaxValue));
-        if (!DrawBounds.TryCompute(list, out Vector3 min, out Vector3 max))
+
+        // What the view shows decides the frame; a view with every overlay off is framed on everything the source can draw.
+        s.History.View.Draw(list, new DrawRequest(view.Overlays));
+        if (list.Items.Length == 0)
+        {
+            s.History.View.Draw(list, new DrawRequest(ulong.MaxValue));
+        }
+
+        var kinds = new Dictionary<ulong, string>();
+        var entities = new List<EntityInfo>();
+        s.History.View.CollectEntities(entities);
+        foreach (EntityInfo e in entities)
+        {
+            kinds[e.Id.Value] = e.Kind;
+        }
+
+        Vector3 min = default;
+        Vector3 max = default;
+        bool found = false;
+        if (selection && Selected.IsSome && ReferenceEquals(Source(ActiveSource).Root, s.Root))
+        {
+            EntityId wanted = Selected;
+            found = DrawBounds.TryCompute(list, item => item.Entity == wanted, out min, out max);
+        }
+
+        if (!found)
+        {
+            found = DrawBounds.TryCompute(list, item => item.Entity.IsSome && kinds.TryGetValue(item.Entity.Value, out string? k) && k is not ("static" or "sensor"), out min, out max)
+                || DrawBounds.TryComputeWithoutScenery(list, out min, out max);
+        }
+
+        if (!found)
         {
             min = Vector3.Zero;
             max = Vector3.One;
@@ -429,9 +467,58 @@ internal sealed partial class ShellModel
             view.Target = centre;
             float radius = Math.Max(size.Length() / 2, 1e-3f);
             view.Distance = radius / MathF.Sin(0.7f / 2) * 1.15f;
+            view.Distance = TightDistance(view, min, max);
         }
 
         view.Touch();
+    }
+
+    /// <summary>
+    /// The nearest orbit distance at which the eight corners of the box stay inside a 4:3 frame with a tenth of margin, found by bisection on the
+    /// view's own camera. The bounding sphere is the starting guess; a box that is wide in one direction fills the frame much better this way.
+    /// </summary>
+    private static float TightDistance(ViewState view, Vector3 min, Vector3 max)
+    {
+        float far = view.Distance * 2;
+        var frame = new OneGame.UI.Rect(0, 0, 400, 300);
+        bool Fits(float distance)
+        {
+            view.Distance = distance;
+            for (int i = 0; i < 8; i++)
+            {
+                var corner = new Vector3((i & 1) == 0 ? min.X : max.X, (i & 2) == 0 ? min.Y : max.Y, (i & 4) == 0 ? min.Z : max.Z);
+                Vector2 p = ViewPicking.ToScreen(view, frame, corner);
+                if (!(p.X >= 40 && p.X <= 360 && p.Y >= 30 && p.Y <= 270))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        float start = view.Distance;
+        if (!Fits(far))
+        {
+            return start;
+        }
+
+        float lo = start * 0.1f;
+        float hi = far;
+        for (int i = 0; i < 24; i++)
+        {
+            float mid = (lo + hi) / 2;
+            if (Fits(mid))
+            {
+                hi = mid;
+            }
+            else
+            {
+                lo = mid;
+            }
+        }
+
+        return hi;
     }
 
     /// <summary>The entity to highlight in a view: the selection, when the view shows the active source or a fork of the same file.</summary>
@@ -831,13 +918,63 @@ internal sealed partial class ShellModel
     }
 }
 
-/// <summary>Bounding box of a draw list, used to place a new view's camera.</summary>
+/// <summary>Bounding boxes of draw items, used to place a view's camera.</summary>
 internal static class DrawBounds
 {
-    public static bool TryCompute(DrawList list, out Vector3 min, out Vector3 max)
+    /// <summary>An item bigger than this many times the median item's extent counts as scenery (a ground plane), not content.</summary>
+    public const float SceneryFactor = 8;
+
+    /// <summary>The box around the items <paramref name="accept"/> takes. False when none is accepted or none has a finite position.</summary>
+    public static bool TryCompute(DrawList list, Func<DrawItem, bool> accept, out Vector3 min, out Vector3 max)
     {
         Vector3 lo = new(float.MaxValue);
         Vector3 hi = new(float.MinValue);
+        bool any = false;
+        foreach (ref readonly DrawItem item in list.Items)
+        {
+            if (accept(item) && ItemBounds(list, item, out Vector3 a, out Vector3 b))
+            {
+                lo = Vector3.Min(lo, a);
+                hi = Vector3.Max(hi, b);
+                any = true;
+            }
+        }
+
+        min = lo;
+        max = hi;
+        return any;
+    }
+
+    /// <summary>
+    /// The box around the items that are not scenery, for modules that don't tag what they draw: items much larger than the median item are left out,
+    /// so a floor several times the size of everything on it doesn't set the frame.
+    /// </summary>
+    public static bool TryComputeWithoutScenery(DrawList list, out Vector3 min, out Vector3 max)
+    {
+        var sizes = new List<float>();
+        foreach (ref readonly DrawItem item in list.Items)
+        {
+            if (ItemBounds(list, item, out Vector3 a, out Vector3 b))
+            {
+                sizes.Add((b - a).Length());
+            }
+        }
+
+        if (sizes.Count == 0)
+        {
+            min = max = default;
+            return false;
+        }
+
+        sizes.Sort();
+        float limit = Math.Max(sizes[sizes.Count / 2], 1e-6f) * SceneryFactor;
+        return TryCompute(list, item => ItemBounds(list, item, out Vector3 a, out Vector3 b) && (b - a).Length() <= limit, out min, out max);
+    }
+
+    private static bool ItemBounds(DrawList list, in DrawItem item, out Vector3 lo, out Vector3 hi)
+    {
+        Vector3 l = new(float.MaxValue);
+        Vector3 h = new(float.MinValue);
         bool any = false;
         void Add(Vector3 p, float r = 0)
         {
@@ -846,52 +983,49 @@ internal static class DrawBounds
                 return;
             }
 
-            lo = Vector3.Min(lo, p - new Vector3(r));
-            hi = Vector3.Max(hi, p + new Vector3(r));
+            l = Vector3.Min(l, p - new Vector3(r));
+            h = Vector3.Max(h, p + new Vector3(r));
             any = true;
         }
 
-        foreach (ref readonly DrawItem item in list.Items)
+        switch (item.Kind)
         {
-            switch (item.Kind)
-            {
-                case DrawKind.Line:
-                case DrawKind.Arrow:
-                    Add(item.A);
-                    Add(item.B);
-                    break;
-                case DrawKind.Point:
-                case DrawKind.Label:
-                    Add(item.A);
-                    break;
-                case DrawKind.Triangle:
-                    Add(item.A);
-                    Add(item.B);
-                    Add(item.C);
-                    break;
-                case DrawKind.Box:
-                    Add(item.A, item.Size.Length());
-                    break;
-                case DrawKind.Sphere:
-                    Add(item.A, item.Size.X);
-                    break;
-                case DrawKind.Capsule:
-                case DrawKind.Cylinder:
-                    Add(item.A, item.Size.X);
-                    Add(item.B, item.Size.X);
-                    break;
-                case DrawKind.Mesh:
-                    foreach (Vector3 v in list.Vertices)
-                    {
-                        Add(v);
-                    }
+            case DrawKind.Line:
+            case DrawKind.Arrow:
+                Add(item.A);
+                Add(item.B);
+                break;
+            case DrawKind.Point:
+            case DrawKind.Label:
+                Add(item.A);
+                break;
+            case DrawKind.Triangle:
+                Add(item.A);
+                Add(item.B);
+                Add(item.C);
+                break;
+            case DrawKind.Box:
+                Add(item.A, item.Size.Length());
+                break;
+            case DrawKind.Sphere:
+                Add(item.A, item.Size.X);
+                break;
+            case DrawKind.Capsule:
+            case DrawKind.Cylinder:
+                Add(item.A, item.Size.X);
+                Add(item.B, item.Size.X);
+                break;
+            case DrawKind.Mesh:
+                for (int i = item.First; i < item.First + item.Count; i++)
+                {
+                    Add(list.Vertices[list.Indices[i]]);
+                }
 
-                    break;
-            }
+                break;
         }
 
-        min = lo;
-        max = hi;
+        lo = l;
+        hi = h;
         return any;
     }
 }

@@ -16,6 +16,9 @@ public static class TestFormat
     /// <summary>The module id.</summary>
     public const string ModuleId = "oscope.test";
 
+    /// <summary>The most bodies a world holds, counting spawned ones.</summary>
+    public const int MaxBodies = 64;
+
     /// <summary>The format version this code reads and writes.</summary>
     public const ushort Version = 1;
 
@@ -194,7 +197,7 @@ public static class TestFormat
             throw new ScopeFormatException(name, $"expected dimensions 2 or 3 in the setup, found {setup[0]}.");
         }
 
-        if (setup[1] is < 1 or > 64)
+        if (setup[1] is < 1 or > MaxBodies)
         {
             throw new ScopeFormatException(name, $"expected 1 to 64 bodies in the setup, found {setup[1]}.");
         }

@@ -56,10 +56,14 @@ internal static class TimelineRenderer
         }
 
         SourceSession s = shell.Sources[Math.Min(shell.ActiveSource, shell.Sources.Count - 1)];
-        var max = new TimeRange(shell.MinSteps, shell.MaxSteps);
+        TimeRange max = shell.TimelineRange;
         float left = TimelineLayout.Left(r);
         float width = TimelineLayout.Width(r);
         float y = r.Y + 4;
+        if (shell.TimelineZoomed)
+        {
+            c.ClipX(left, left + width);
+        }
 
         // Ruler.
         float step = GridMath.NiceStep(max.Length / 8f);
@@ -172,7 +176,16 @@ internal static class TimelineRenderer
         // The playhead goes through every row.
         float px = TimelineLayout.XOf(r, shell.Step, max);
         c.Fill(px - 1, rowsTop - 2, 2, Math.Max(y - rowsTop + 2, 4), Playhead);
-        c.Text($"{shell.Step}", Math.Min(px + 4, r.Right - 60), r.Y + 4, 11, Playhead);
+        c.ClearClip();
+        if (shell.Step >= max.Min && shell.Step <= max.Max)
+        {
+            c.Text($"{shell.Step}", Math.Min(px + 4, r.Right - 60), r.Y + 4, 11, Playhead);
+        }
+
+        if (shell.TimelineZoomed)
+        {
+            c.Text($"zoom {max.Min}..{max.Max}", r.Right - 150, r.Bottom - 14, 10, Dim);
+        }
     }
 
     private static void DrawTrack(Painter c, UiRect r, TrackData t, float left, float width, float y, float h, TimeRange max)
@@ -203,7 +216,7 @@ internal static class TimelineRenderer
                     {
                         float x = TimelineLayout.XOf(r, smp.Step, max);
                         c.Fill(x, y, 2, h, MarkerInk);
-                        if (x - last > 60 && smp.Text is not null)
+                        if (x - last > 60 && smp.Text is not null && x >= left && x < left + width - 40)
                         {
                             c.Text(smp.Text, x + 4, y, 10, MarkerInk);
                             last = x;
@@ -220,6 +233,11 @@ internal static class TimelineRenderer
                     double hi = double.MinValue;
                     foreach (TrackSample smp in samples)
                     {
+                        if (smp.Step < max.Min || smp.Step > max.Max)
+                        {
+                            continue;
+                        }
+
                         min = Math.Min(min, smp.Value);
                         hi = Math.Max(hi, smp.Value);
                     }
@@ -236,6 +254,11 @@ internal static class TimelineRenderer
                     Array.Fill(up, double.MinValue);
                     foreach (TrackSample smp in samples)
                     {
+                        if (smp.Step < max.Min || smp.Step > max.Max)
+                        {
+                            continue;
+                        }
+
                         int col = Math.Clamp((int)((double)(smp.Step - max.Min) / max.Length * (columns - 1)), 0, columns - 1);
                         lo[col] = Math.Min(lo[col], smp.Value);
                         up[col] = Math.Max(up[col], smp.Value);

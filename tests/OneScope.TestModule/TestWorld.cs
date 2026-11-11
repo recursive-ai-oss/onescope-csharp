@@ -21,7 +21,7 @@ public sealed class TestWorld : IScopeWorld
     private static readonly Color32 BoundsColor = new(200, 200, 200);
 
     private readonly int _dims;
-    private readonly int _count;
+    private int _count;
     private readonly string[] _names;
     private readonly bool[] _alive;
     private readonly int[] _sleep;
@@ -36,15 +36,21 @@ public sealed class TestWorld : IScopeWorld
         _dims = setup[0];
         _count = setup[1];
         uint seed = BinaryPrimitives.ReadUInt32LittleEndian(setup[2..]);
-        _names = new string[_count];
-        _alive = new bool[_count];
-        _sleep = new int[_count];
-        _p = new int[_count * 3];
-        _v = new int[_count * 3];
+
+        // Room for spawned bodies is reserved up front, so a spawn never allocates in the middle of a step.
+        _names = new string[TestFormat.MaxBodies];
+        _alive = new bool[TestFormat.MaxBodies];
+        _sleep = new int[TestFormat.MaxBodies];
+        _p = new int[TestFormat.MaxBodies * 3];
+        _v = new int[TestFormat.MaxBodies * 3];
+        for (int i = 0; i < TestFormat.MaxBodies; i++)
+        {
+            _names[i] = "body-" + i.ToString(CultureInfo.InvariantCulture);
+        }
+
         uint state = seed ^ 0x9E3779B9u;
         for (int i = 0; i < _count; i++)
         {
-            _names[i] = "body-" + i.ToString(CultureInfo.InvariantCulture);
             _alive[i] = true;
             for (int a = 0; a < _dims; a++)
             {
@@ -258,10 +264,10 @@ public sealed class TestWorld : IScopeWorld
         while (pos < input.Length)
         {
             byte op = input[pos];
-            int need = op switch { 1 or 2 => 14, 3 => 2, 4 => 5, _ => 0 };
+            int need = op switch { 1 or 2 => 14, 3 => 2, 4 => 5, 5 => 13, _ => 0 };
             if (need == 0)
             {
-                throw new ScopeFormatException("step input", $"expected an operation 1 to 4 at offset {pos}, found {op}.");
+                throw new ScopeFormatException("step input", $"expected an operation 1 to 5 at offset {pos}, found {op}.");
             }
 
             if (input.Length - pos < need)
@@ -272,6 +278,20 @@ public sealed class TestWorld : IScopeWorld
             if (op == 4)
             {
                 _gravity = BinaryPrimitives.ReadInt32LittleEndian(input[(pos + 1)..]);
+            }
+            else if (op == 5)
+            {
+                // A spawn into a full world does nothing; the same input does the same thing on every replay.
+                if (_count < TestFormat.MaxBodies)
+                {
+                    int n = _count++;
+                    _alive[n] = true;
+                    _sleep[n] = 0;
+                    _p[n * 3] = Math.Clamp(BinaryPrimitives.ReadInt32LittleEndian(input[(pos + 1)..]), 0, Size);
+                    _p[n * 3 + 1] = Math.Clamp(BinaryPrimitives.ReadInt32LittleEndian(input[(pos + 5)..]), 0, Size);
+                    _p[n * 3 + 2] = _dims == 2 ? 0 : Math.Clamp(BinaryPrimitives.ReadInt32LittleEndian(input[(pos + 9)..]), 0, Size);
+                    _v[n * 3] = _v[n * 3 + 1] = _v[n * 3 + 2] = 0;
+                }
             }
             else
             {
@@ -353,11 +373,13 @@ public sealed class TestWorld : IScopeWorld
     /// <inheritdoc />
     public void Restore(ReadOnlySpan<byte> snapshot)
     {
-        int expected = 12 + _count * BodyInts * 4;
-        if (snapshot.Length != expected)
+        int body = BodyInts * 4;
+        if (snapshot.Length < 12 || (snapshot.Length - 12) % body != 0 || (snapshot.Length - 12) / body > TestFormat.MaxBodies)
         {
-            throw new ScopeFormatException("snapshot", $"expected {expected} bytes, found {snapshot.Length}.");
+            throw new ScopeFormatException("snapshot", $"expected 12 bytes plus {body} per body for at most {TestFormat.MaxBodies} bodies, found {snapshot.Length} bytes.");
         }
+
+        int count = (snapshot.Length - 12) / body;
 
         long step = BinaryPrimitives.ReadInt64LittleEndian(snapshot);
         if (step < 0)
@@ -366,7 +388,7 @@ public sealed class TestWorld : IScopeWorld
         }
 
         int pos;
-        for (int i = 0; i < _count; i++)
+        for (int i = 0; i < count; i++)
         {
             pos = 12 + i * BodyInts * 4;
             int alive = BinaryPrimitives.ReadInt32LittleEndian(snapshot[pos..]);
@@ -378,8 +400,9 @@ public sealed class TestWorld : IScopeWorld
 
         _step = step;
         _gravity = BinaryPrimitives.ReadInt32LittleEndian(snapshot[8..]);
+        _count = count;
         pos = 12;
-        for (int i = 0; i < _count; i++)
+        for (int i = 0; i < count; i++)
         {
             _alive[i] = Get(snapshot, ref pos) == 1;
             _sleep[i] = Get(snapshot, ref pos);
@@ -585,6 +608,24 @@ public sealed class TestWorld : IScopeWorld
                     BinaryPrimitives.WriteInt32LittleEndian(o[6..], ToInt(v.Y));
                     BinaryPrimitives.WriteInt32LittleEndian(o[10..], ToInt(v.Z));
                     into.Advance(14);
+                    break;
+                }
+
+            case "spawn":
+                {
+                    Expect(call, ValueKind.Vector);
+                    if (_count >= TestFormat.MaxBodies)
+                    {
+                        throw new ArgumentException($"the world already holds {TestFormat.MaxBodies} bodies.", nameof(call));
+                    }
+
+                    Vector3 v = call.Args[0].GetVector();
+                    Span<byte> o = into.GetSpan(13);
+                    o[0] = 5;
+                    BinaryPrimitives.WriteInt32LittleEndian(o[1..], ToInt(v.X));
+                    BinaryPrimitives.WriteInt32LittleEndian(o[5..], ToInt(v.Y));
+                    BinaryPrimitives.WriteInt32LittleEndian(o[9..], ToInt(v.Z));
+                    into.Advance(13);
                     break;
                 }
 
