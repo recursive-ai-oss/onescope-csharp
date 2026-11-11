@@ -5,7 +5,7 @@
 Everything the app, samples and tests reference comes from nuget.org: onegame's packages, the libraries the bundled modules sit on, and the modules themselves.
 `tools/check-packages.sh` reads the pinned versions (`Directory.Packages.props` and the tests' `VersionOverride` attributes) for `RecursiveAI.OnePhysics`,
 `RecursiveAI.OnePhysics.Scope`, `RecursiveAI.OnePath` and `RecursiveAI.OnePath.Scope` and asks nuget.org whether each exists. When one is missing it fails with a single
-message naming it, so a missing package is not mistaken for a restore problem. The CI workflow runs it first; the release workflow uses it to decide whether the tool can be built.
+message naming it, so a missing package is not mistaken for a restore problem. The `app` jobs of the CI workflow and the tool release run it first. The three libraries (SDK, probe and attach) and their tests need none of these packages.
 
 To build before those packages are published, put them in a folder and point `ONESCOPE_FEEDS` at it (several folders are separated by `;`):
 
@@ -31,26 +31,39 @@ listed. The breaks intended for 1.0 are recorded in `src/OneScope.Sdk/Compatibil
 
 ## Continuous integration
 
-`.github/workflows/ci.yml` builds and runs the three test projects on Linux, macOS and Windows. Golden images come from the lavapipe software renderer: the Linux job installs
-it and compares pixels exactly; macOS and Windows draw on the machine's renderer, which differs in the last bits, so there the tests check that three runs of each capture are
-byte-identical and skip the comparison with the goldens.
+`.github/workflows/ci.yml` has two groups of jobs, each on Linux, macOS and Windows:
+
+- **`libraries`**: restores, builds and tests only the SDK, probe and attach test projects, then packs the three libraries. They need nothing but the .NET SDK and nuget.org's test packages, so
+  these jobs go green on a clean runner before any module package exists.
+- **`app`**: `tools/check-packages.sh` (strict), then the whole solution, the app's tests and, on Linux, the tool pack. It can only pass once the physics and navigation modules are on nuget.org.
+
+Golden images come from the lavapipe software renderer: the Linux `app` job installs it and compares pixels exactly (within one step per channel on a different llvmpipe build); macOS and Windows draw on the machine's renderer,
+which differs in the last bits, so there the tests check that three runs of each capture are byte-identical and skip the comparison with the goldens.
 
 ## Releasing
 
-`CHANGELOG.md` keeps an `Unreleased` section; a release adds a `## [<version>] - <date>` section above it, and that section becomes the GitHub release's notes.
-`tools/release-checks.sh` holds the checks the workflow makes on a tag, so they can be run by hand: `tag-form` (`v1.2.3` or `v1.2.3-rc.1`), `changelog` (a section for the version),
-`version` (the tag equals the version the four projects build as) and `notes` (prints the section).
+The packages are released in an order, because each step builds on the one before it:
 
-`.github/workflows/release.yml` runs when a tag `v<version>` is pushed, where the version is `VersionPrefix` and `VersionSuffix` from `Directory.Build.props` (for example `v1.0.0-rc.1`), in three jobs:
+| Step | What | How | Needs |
+|---|---|---|---|
+| 1 | `RecursiveAI.OneScope.Sdk`, `.Probe`, `.Attach` | tag `v<version>` | the `libraries` jobs of `ci.yml` green on the commit |
+| 2 | `RecursiveAI.OnePath` | the onepath repository | step 1 is on nuget.org |
+| 3 | `RecursiveAI.OnePath.Scope` and `RecursiveAI.OnePhysics.Scope` | their own repositories, each built on the SDK from step 1 | steps 1 and 2 are on nuget.org |
+| 4 | `RecursiveAI.OneScope.Tool` | tag `tool-v<version>` | step 3 is on nuget.org, and the whole `ci.yml` run green on the commit (`app` jobs and `check-packages.sh` included) |
 
-1. **verify**: the tag is well formed, its commit is on `main`, `ci.yml` passed on that commit, and the changelog has the version.
-2. **publish** (environment `nuget`): the version check, then build and test, then pack `RecursiveAI.OneScope.Sdk`, `.Probe`, `.Attach` and `.Tool` with `.snupkg` symbols, a provenance attestation, and a push to nuget.org
+Because the app's pins must name published packages, the commit that gets the `tool-v<version>` tag is later than the one that got `v<version>`: pin the final module versions, wait for CI, then tag.
+
+`CHANGELOG.md` keeps an `Unreleased` section. A library release adds `## [<version>] - <date>` above it, a tool release `## [tool <version>] - <date>`; the section becomes that GitHub release's notes.
+`tools/release-checks.sh` holds the checks the workflow makes on a tag, so they can be run by hand: `kind` (`libraries` or `tool`), `tag-form` (`v1.2.3` or `tool-v1.2.3`, with an optional suffix such as `-rc.1`),
+`changelog` (the section for the tag), `version` (the tag equals the version of the packages it publishes), `notes` (prints the section) and `ci <tag> <sha>` (the CI requirement above, through the `gh` command).
+
+`.github/workflows/release.yml` runs on either tag form, in three jobs:
+
+1. **verify**: the tag is well formed, its commit is on `main`, CI is green as the table says (for a library tag: the three `libraries` jobs, by job, even while the app jobs are red; for a tool tag: the whole run), and the changelog has the version.
+2. **publish** (environment `nuget`): the version check, then (tool only) `check-packages.sh`, build and test of what the tag publishes, pack with `.snupkg` symbols, a provenance attestation, and a push to nuget.org
    with a short-lived key from trusted publishing (`NuGet/login`, user `recursiveai.org`); no API key is stored. Pushes use `--skip-duplicate`.
-3. **release**: a GitHub release with the changelog section as notes and the packages attached; a pre-release when the version has a suffix.
+3. **release**: a GitHub release named after the tag, with the changelog section as notes and the packages attached; a pre-release when the version has a suffix.
 
 Every action is pinned by commit, with the version in a comment, because the publish job can obtain a publishing key.
-
-The tool carries the physics and navigation modules, so it can only be built once those are on nuget.org. The publish job asks `tools/check-packages.sh`; when a module is missing it publishes the three libraries only
-(the modules are built on them) and warns. Once the modules are published, re-run the workflow for the same tag: the libraries are skipped as duplicates, the app is tested, and the tool is pushed and added to the release.
 
 One-time setup, done by an owner of the nuget.org account: a trusted publishing policy for this repository, the workflow file `release.yml` and the environment `nuget`; and a repository environment named `nuget`.

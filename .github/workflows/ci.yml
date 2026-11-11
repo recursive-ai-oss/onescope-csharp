@@ -2,8 +2,13 @@ name: ci
 
 # Build and test on every push and pull request, on the three desktop systems.
 #
-# The build restores the physics and navigation modules and the libraries under them from nuget.org, so they must be
-# published there first. The first step says so plainly when one is missing, instead of failing in restore.
+# Two groups of jobs, because the packages are released in an order (docs/releasing.md):
+#   libraries  the SDK, probe and attach libraries with their tests and packs. They depend on nothing but the .NET SDK and
+#              nuget.org's test packages, so they pass on a clean runner before any module is published. A release tag
+#              "v<version>" requires these jobs to have passed on its commit.
+#   app        the shell: it carries the physics and navigation modules and the libraries under them, restored from nuget.org,
+#              so it can only pass once those are published. The first step says so plainly when one is missing, instead of
+#              failing in restore. A release tag "tool-v<version>" requires the whole run, these jobs included, to be green.
 #
 # Golden images come from the lavapipe software renderer. The Linux job installs it and compares pixels exactly. On macOS and
 # Windows the tests draw on the machine's own renderer, which differs in the last bits, so they check that three runs of
@@ -22,8 +27,49 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
-    name: ${{ matrix.os }}
+  libraries:
+    name: libraries (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      # Actions are pinned by commit: the release workflow, which can obtain a publishing key, uses the same ones.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+
+      # Only the test projects of the libraries are restored and built, so nothing here needs a module package.
+      - name: Restore
+        run: |
+          dotnet restore tests/OneScope.Sdk.Tests
+          dotnet restore tests/OneScope.Attach.Tests
+
+      - name: Build
+        run: |
+          dotnet build tests/OneScope.Sdk.Tests -c Release --no-restore
+          dotnet build tests/OneScope.Attach.Tests -c Release --no-restore
+
+      - name: SDK tests
+        run: dotnet test --project tests/OneScope.Sdk.Tests -c Release --no-build
+
+      - name: Attach tests
+        run: dotnet test --project tests/OneScope.Attach.Tests -c Release --no-build
+
+      - name: Pack
+        run: |
+          dotnet pack src/OneScope.Sdk -c Release --no-build
+          dotnet pack src/OneScope.Probe -c Release --no-build
+          dotnet pack src/OneScope.Attach -c Release --no-build
+
+  app:
+    name: app (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     strategy:
@@ -31,7 +77,6 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
-      # Actions are pinned by commit: the release workflow, which can obtain a publishing key, uses the same ones.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -54,19 +99,9 @@ jobs:
       - name: Build
         run: dotnet build OneScope.slnx -c Release
 
-      - name: SDK tests
-        run: dotnet test --project tests/OneScope.Sdk.Tests -c Release --no-build
-
-      - name: Attach tests
-        run: dotnet test --project tests/OneScope.Attach.Tests -c Release --no-build
-
       - name: App tests
         run: dotnet test --project tests/OneScope.App.Tests -c Release --no-build
 
-      - name: Pack
+      - name: Pack the tool
         if: runner.os == 'Linux'
-        run: |
-          dotnet pack src/OneScope.Sdk -c Release --no-build
-          dotnet pack src/OneScope.Probe -c Release --no-build
-          dotnet pack src/OneScope.Attach -c Release --no-build
-          dotnet pack src/OneScope.App -c Release --no-build
+        run: dotnet pack src/OneScope.App -c Release --no-build
