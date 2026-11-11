@@ -16,7 +16,7 @@
   <PropertyGroup>
     <OneScopePackagePrefix>RecursiveAI.OneScope</OneScopePackagePrefix>
     <OneScopeRootNamespace>OneScope</OneScopeRootNamespace>
-    <VersionPrefix>1.0.0</VersionPrefix>
+    <VersionPrefix>1.0.1</VersionPrefix>
     <Authors>Recursive AI, LLC</Authors>
     <Copyright>Copyright (c) Recursive AI, LLC</Copyright>
     <PackageLicenseExpression>MIT OR Apache-2.0</PackageLicenseExpression>
