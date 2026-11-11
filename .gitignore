@@ -12,7 +12,6 @@
 !/tests
 !/samples
 !/tools
-!/fuzz
 !/docs
 !/testdata
 !/.github
