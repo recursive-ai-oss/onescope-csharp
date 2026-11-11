@@ -22,6 +22,7 @@
     <Project Path="tools/GenTestData/GenTestData.csproj" />
     <Project Path="tools/GenPhysicsData/GenPhysicsData.csproj" />
     <Project Path="tools/GenPathData/GenPathData.csproj" />
+    <Project Path="tools/Recordings/GenShowcase/GenShowcase.csproj" />
     <Project Path="tools/ApiList/ApiList.csproj" />
     <Project Path="tools/Fuzz/Fuzz.csproj" />
   </Folder>
