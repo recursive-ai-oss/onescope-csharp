@@ -4,6 +4,21 @@ What changed in each release, newest first. The libraries (`RecursiveAI.OneScope
 
 ## [Unreleased]
 
+## [tool 1.0.0] - 2026-11-11
+
+The first stable release of the `onescope` tool (`RecursiveAI.OneScope.Tool`): a viewer for the deterministic libraries, built on onegame and bundling the physics and navigation modules. It runs in a window or headless, on the desktop platforms onegame supports.
+
+- **Open and attach.** Open a scene, snapshot or replay file, or attach to a running game, test or benchmark that hosts the probe. A live source is re-simulated locally, so the host is never changed or slowed by the viewer.
+- **Scrub.** One timeline across every open source, with tracks for events, markers, series and findings. Seeking to any step goes through keyframes and lands on the same hash as playing straight to it.
+- **Inspect.** Entity tree, inspector, selection that follows entities across sources, fields drawn as colour maps, and overlays declared by the module.
+- **Fork and poke.** Fork any source at any step, poke the fork (drag, spawn, delete, set a parameter), and step it. Every poke is recorded into the fork's own replay, and the fork is drawn on the timeline as a branch from its divergence step. Originals and live processes are never changed.
+- **Compare.** A fork against its original, the same replay through two versions of a library side by side, a shared-entity diff that names the first differing entity and field, and ghost tracks from recorded pose dumps.
+- **Sessions.** `.oscope` files keep the open sources, forks, layout and cameras.
+- **MCP and CLI.** Every action is one operation with JSON results, reachable from the UI, the command line and MCP, with a window or headless. Headless captures (`capture_frame`, `capture_sequence`) are byte-identical from run to run on one renderer.
+- **Bundled modules.** `RecursiveAI.OnePhysics.Scope` 1.1.0 (2D and 3D worlds, contacts, joints, islands and sleep; contact-normal arrows scale with body size) and `RecursiveAI.OnePath.Scope` 1.0.0 (navmesh build stages stepped one at a time, paths and search frontiers, flow fields, crowds), on `RecursiveAI.OnePhysics` 1.0.0 and `RecursiveAI.OnePath` 1.2.0.
+- **Other modules** load from a path into their own collectible load context.
+- Built on `RecursiveAI.OneScope.Sdk`, `.Probe` and `.Attach` 1.0.0 and onegame 1.25.0.
+
 ## [1.0.0] - 2026-11-11
 
 The first stable release of `RecursiveAI.OneScope.Sdk`, `RecursiveAI.OneScope.Probe` and `RecursiveAI.OneScope.Attach`, all at 1.0.0. They have no package dependencies beyond .NET, and are NativeAOT- and trim-clean, so any program can reference them.
