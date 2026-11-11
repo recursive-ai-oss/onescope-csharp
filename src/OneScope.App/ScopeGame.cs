@@ -1,4 +1,6 @@
 using OneGame.Core;
+using OneScope.Sdk;
+using EntityId = OneScope.Sdk.EntityId;
 using OneGame.Atlas;
 using OneGame.Host;
 using OneGame.Text;
@@ -108,6 +110,7 @@ internal sealed class ScopeGame : GameDefinition
                 UiKit.ToggleButton("Play", () => shell.SpeedMilliStepsPerSecond != 0, on => shell.SetSpeed(on ? 60_000 : 0), "play"),
                 UiKit.Button(">", () => Nudge(1), "step-forward"),
                 UiKit.Button(">|", () => shell.Seek(shell.MaxSteps), "seek-end"),
+                UiKit.Button("Fork", ForkActive, "fork"),
                 Ui.Label("").Named("step-label").BindText(() => shell.Version, _ => $"step {shell.Step} / {shell.MaxSteps}").Margin(0, 10),
                 Ui.Each(OverlayChoices, c => UiKit.ToggleButton(c.Name, () => OverlayOn(c.Id), on => SetOverlay(c.Id, on), "overlay/" + c.Id)),
                 Ui.Spacer(),
@@ -208,7 +211,7 @@ internal sealed class ScopeGame : GameDefinition
         }
 
         SourceSession s = _shell.Sources[Math.Min(_shell.ActiveSource, _shell.Sources.Count - 1)];
-        return $"{s.Info.Name}  ·  {s.Info.Dimensions}D  ·  {s.Info.Unit.Name}";
+        return $"{s.Label}  ·  {s.Info.Dimensions}D  ·  {s.Info.Unit.Name}";
     }
 
     private static string LogText(LogRow r) => $"{r.Step,7}  {r.Kind,-7} {r.Text}";
@@ -217,7 +220,31 @@ internal sealed class ScopeGame : GameDefinition
     {
         if (_shell.Sources.Count > 0)
         {
-            _shell.Seek(Math.Clamp(_shell.Step + delta, 0, _shell.MaxSteps));
+            RunOp(() => _shell.StepTime(delta, _shell.Sources[Math.Min(_shell.ActiveSource, _shell.Sources.Count - 1)]));
+        }
+    }
+
+    /// <summary>Forks the active source at the shared cursor.</summary>
+    private void ForkActive()
+    {
+        if (_shell.Sources.Count > 0)
+        {
+            SourceSession s = _shell.Sources[Math.Min(_shell.ActiveSource, _shell.Sources.Count - 1)];
+            RunOp(() => _shell.Fork(s, Math.Min(_shell.Step, s.History.StepCount), addView: true));
+        }
+    }
+
+    /// <summary>Runs a shell change from the UI; a refusal goes to the event log instead of ending the frame.</summary>
+    private void RunOp(Action change)
+    {
+        try
+        {
+            change();
+        }
+        catch (OneGame.Control.ControlException ex)
+        {
+            _shell.AddLog(_shell.ActiveSource, "error", ex.Message);
+            _shell.Touch();
         }
     }
 
@@ -265,15 +292,25 @@ internal sealed class ScopeGame : GameDefinition
         }
 
         ViewState view = _shell.Views[index];
+        OneGame.UI.Rect rect = ViewPicking.Round(element.AbsoluteBounds);
         switch (ev.Kind)
         {
             case UiEventKind.PointerDown:
                 _shell.ActiveView = index;
-                _dragView = index;
                 _lastX = ev.X;
                 _lastY = ev.Y;
                 element.Tree?.CapturePointer(element);
+                _dragView = index;
+                _drag = null;
+                if (view.Source < _shell.Sources.Count)
+                {
+                    BeginPick(view, rect, ev);
+                }
+
                 _shell.Touch();
+                return true;
+            case UiEventKind.PointerMove when _drag is { } drag && _dragView == index:
+                MoveDragged(drag, view, rect, ev);
                 return true;
             case UiEventKind.PointerMove when _dragView == index:
                 float dx = ev.X - _lastX;
@@ -296,10 +333,70 @@ internal sealed class ScopeGame : GameDefinition
                 return true;
             case UiEventKind.PointerUp:
                 _dragView = -1;
+                _drag = null;
                 return true;
         }
 
         return false;
+    }
+
+    /// <summary>What a pointer drag on a body in a fork is doing: which fork, which body, and the plane the pointer moves it on.</summary>
+    private sealed record Dragged(SourceSession Fork, PokeInfo Poke, EntityId Entity, System.Numerics.Vector3 PlaneOrigin, System.Numerics.Vector3 PlaneNormal);
+
+    private Dragged? _drag;
+
+    /// <summary>
+    /// A press selects the entity under the pointer. On a fork whose module declares a drag poke, it also starts dragging that entity;
+    /// anywhere else the press starts a camera drag.
+    /// </summary>
+    private void BeginPick(ViewState view, OneGame.UI.Rect rect, UiEvent ev)
+    {
+        SourceSession source = _shell.Source(view.Source);
+        ViewPicking.Hit hit = ViewPicking.Pick(_shell, view, rect, ev.X, ev.Y);
+        _shell.SelectSource(view.Source);
+        if (!hit.Entity.IsSome)
+        {
+            return;
+        }
+
+        _shell.Select(hit.Entity);
+        if (source.IsFork && source.DragPoke is { } poke)
+        {
+            // Dragging pokes at the end of the fork's recording, so a fork scrubbed back first runs forward to its end.
+            RunOp(() => _shell.Seek(source.History.StepCount));
+            _drag = new Dragged(source, poke, hit.Entity, hit.Point, hit.PlaneNormal);
+        }
+    }
+
+    /// <summary>One pointer move of a drag is one step of the fork with the module's drag poke aimed at the pointer.</summary>
+    private void MoveDragged(Dragged drag, ViewState view, OneGame.UI.Rect rect, UiEvent ev)
+    {
+        if (ev.X == _lastX && ev.Y == _lastY)
+        {
+            // The pointer has not moved (a release at the spot of the last move reports it again): no new step.
+            return;
+        }
+
+        _lastX = ev.X;
+        _lastY = ev.Y;
+        System.Numerics.Vector3? at = ViewPicking.PointOnPlane(view, rect, ev.X, ev.Y, drag.PlaneOrigin, drag.PlaneNormal);
+        if (at is null)
+        {
+            return;
+        }
+
+        ScopeValue[] args = [ScopeValue.OfEntity(drag.Entity), ScopeValue.OfVector(at.Value)];
+        try
+        {
+            _shell.Poke(drag.Fork, new PokeCall(drag.Poke.Id, args));
+            _shell.StepFork(drag.Fork, 1);
+        }
+        catch (OneGame.Control.ControlException ex)
+        {
+            _shell.AddLog(drag.Fork.Index, "error", ex.Message);
+            _shell.Touch();
+            _drag = null;
+        }
     }
 
     private bool ViewWheel(int index, UiEvent ev)

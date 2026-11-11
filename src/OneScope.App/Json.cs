@@ -122,6 +122,9 @@ internal readonly struct Args
         return new System.Numerics.Vector3(c[0], c[1], c[2]);
     }
 
+    /// <summary>The raw value of an argument that is itself an object or array, or null when absent.</summary>
+    public JsonElement? Element(string name) => Has(name) ? Get(name) : null;
+
     /// <summary>A name or a number: returns the string form either way.</summary>
     public string? NameOrNumber(string name)
     {

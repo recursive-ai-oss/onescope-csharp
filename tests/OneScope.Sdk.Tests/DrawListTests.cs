@@ -34,6 +34,31 @@ public class DrawListTests
     }
 
     [Fact]
+    public void EveryItemCarriesTheEntityItShows()
+    {
+        var list = new DrawList();
+        var style = new DrawStyle(Color32.White, 0, 0, DrawFlags.None, new EntityId(42));
+        list.Line(Vector3.Zero, Vector3.One, style);
+        list.Sphere(Vector3.Zero, 1, style);
+        list.Label(Vector3.One, "x", style);
+        list.Box(Vector3.Zero, Vector3.One, Quaternion.Identity, new DrawStyle(Color32.White));
+        Assert.All(list.Items[..3].ToArray(), i => Assert.Equal(42UL, i.Entity.Value));
+        Assert.False(list.Items[3].Entity.IsSome);
+        list.Clear();
+        list.Line(Vector3.Zero, Vector3.One, new DrawStyle(Color32.White));
+        Assert.False(list.Items[0].Entity.IsSome);
+    }
+
+    [Fact]
+    public void ThePokeRoleIsDeclaredByTheModuleAndDefaultsToNone()
+    {
+        var module = new TestModule.TestModule();
+        var info = module.Open(File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "testdata", "test-2d-600.ostm")), "t").Info;
+        Assert.Equal(PokeRole.DragToPoint, info.Pokes.Single(p => p.Id == "teleport").Role);
+        Assert.All(info.Pokes.Where(p => p.Id != "teleport"), p => Assert.Equal(PokeRole.None, p.Role));
+    }
+
+    [Fact]
     public void BadMeshesAreDroppedAndCounted()
     {
         var list = new DrawList();

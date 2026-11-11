@@ -27,3 +27,7 @@ A source declares the axes it can be stepped along. `time` is always one. Anothe
 ## Diff
 
 `IScopeWorld.FirstDifference` returns the first differing entity and field, in the module's fixed order, or null. `History.Diff(other, step)` moves both histories to the step and compares.
+
+## What a fork's pokes can carry
+
+A module declares each poke with its parameters (`PokeInfo`). A poke with `PokeRole.DragToPoint` takes an entity and a vector and is the one the app calls when an entity is dragged with the pointer. Draw items carry the entity they show (`DrawStyle.Entity`), which is how the app finds the entity under the pointer and outlines the selected one.

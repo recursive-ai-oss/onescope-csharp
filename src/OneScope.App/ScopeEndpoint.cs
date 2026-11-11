@@ -38,7 +38,7 @@ internal sealed class ScopeEndpoint : IControlEndpoint, IDisposable
         Add("sources", "List the open sources with their step, hash, keyframes and the shared time axis.", """{"type":"object","properties":{}}""", false, Sources);
         Add("seek", "Move every source to a step (time axis), or one source to a position on another axis. Returns the step and the exact world hash.",
             """{"type":"object","properties":{"step":{"type":"integer","minimum":0},"axis":{"type":"string"},"position":{"type":"integer","minimum":0},"source":{"type":"integer"}}}""", true, Seek);
-        Add("step", "Step by delta (default 1; negative goes back) along the time axis, or along another axis for one source. Returns the step and hash.",
+        Add("step", "Step by delta (default 1; negative goes back) along the time axis, or along another axis for one source. On a fork at the end of its recording (the source argument, default the active source), going forward runs new steps in the fork with its queued pokes. Returns the step and hash.",
             """{"type":"object","properties":{"delta":{"type":"integer"},"axis":{"type":"string"},"source":{"type":"integer"}}}""", true, StepOp);
         Add("play", "Set the presentation speed in steps per second (0 pauses; negative plays backwards) and optionally run frames presentation frames at 60 per second right now. Speed never changes what any step computes.",
             """{"type":"object","properties":{"speed":{"type":"number"},"frames":{"type":"integer","minimum":0,"maximum":1000000},"loop":{"type":"boolean"}}}""", true, Play);
@@ -52,12 +52,24 @@ internal sealed class ScopeEndpoint : IControlEndpoint, IDisposable
             """{"type":"object","properties":{"source":{"type":"integer"}}}""", false, Axes);
         Add("findings", "List what the module found while the recording played: step, code, severity, entities, text, suggested change. Optional: source, from, to, severity, limit.",
             """{"type":"object","properties":{"source":{"type":"integer"},"from":{"type":"integer"},"to":{"type":"integer"},"severity":{"type":"string"},"limit":{"type":"integer","minimum":1}}}""", false, Findings);
+        Add("fork", "Fork a source at a step (default: the shared cursor). The fork is a new source with its own recording: poke and step it, and the opened file is never changed. Returns the fork's source number (also its branch id), where it diverges from its parent, and the view it got.",
+            """{"type":"object","properties":{"source":{"type":"integer"},"step":{"type":"integer","minimum":0},"view":{"type":"boolean"}}}""", true, ForkOp);
+        Add("pick", "The entity under a window pixel, and the world point there, in a scene view (default: the view that contains the pixel). Same hit test as a pointer press. Use project for the opposite direction.",
+            """{"type":"object","properties":{"x":{"type":"number"},"y":{"type":"number"},"view":{"type":"integer"}},"required":["x","y"]}""", false, PickOp);
+        Add("project", "Where an entity is in a scene view, in window pixels (what to give input_pointer to press, drag or release on it). Default view: the first one that shows the source.",
+            """{"type":"object","properties":{"entity":{"type":"integer"},"view":{"type":"integer"},"source":{"type":"integer"}},"required":["entity"]}""", false, ProjectOp);
+        Add("poke", "Queue a poke the module declares on a fork; it takes effect on the fork's next step. args is an object by parameter name (entity ids as integers, vectors as [x,y,z]) or an array in parameter order. With no poke name, lists the declared pokes. Refused on an opened file (read_only).",
+            """{"type":"object","properties":{"source":{"type":"integer"},"poke":{"type":"string"},"args":{"type":["object","array"]},"step":{"type":"boolean"}}}""", true, PokeOp);
+        Add("diff", "Compare a fork with its parent (or any source of the same module) at a step: the first differing entity and field in the module's order, or none. Also reports the divergence step: the first step whose input differs.",
+            """{"type":"object","properties":{"source":{"type":"integer"},"other":{"type":"integer"},"step":{"type":"integer","minimum":0}}}""", true, DiffOp);
+        Add("replay_save", "Write a source's replay (a fork's recording with its pokes, or an opened file's) to a new file inside the output folder. Never overwrites an opened file.",
+            """{"type":"object","properties":{"source":{"type":"integer"},"path":{"type":"string"}},"required":["path"]}""", false, ReplaySave);
         Add("view", "List the scene views, or change one: add (2d or 3d), remove, source, camera (target, halfHeight, distance, yaw, pitch), frame, wireframe, grid, active.",
             """{"type":"object","properties":{"index":{"type":"integer"},"add":{"type":"string","enum":["2d","3d"]},"remove":{"type":"boolean"},"source":{"type":"integer"},"target":{"type":"array","items":{"type":"number"}},"halfHeight":{"type":"number"},"distance":{"type":"number"},"yaw":{"type":"number"},"pitch":{"type":"number"},"frame":{"type":"boolean"},"wireframe":{"type":"boolean"},"grid":{"type":"boolean"},"active":{"type":"boolean"}}}""", true, ViewOp);
         Add("layout", "Show or hide panels: entities, inspector, timeline, log.",
             """{"type":"object","properties":{"entities":{"type":"boolean"},"inspector":{"type":"boolean"},"timeline":{"type":"boolean"},"log":{"type":"boolean"}}}""", true, Layout);
         Register("capture_frame", "Capture a PNG. view: capture one scene view alone, full size (default: the whole shell). size (360p, 720p, 1080p or WxH), scale, path (relative to the output folder), presented (the window's own frame).",
-            """{"type":"object","properties":{"path":{"type":"string"},"size":{"type":"string"},"scale":{"type":"number"},"view":{"type":"integer"},"presented":{"type":"boolean"}}}""", false, CaptureFrame);
+            """{"type":"object","properties":{"path":{"type":"string"},"size":{"type":"string"},"scale":{"type":"number"},"view":{"type":"integer"},"source":{"type":"integer"},"presented":{"type":"boolean"}}}""", false, CaptureFrame);
         Add("capture_sequence", "Capture count PNGs into dir, stepping the cursor by stride (along axis) between frames. Writes frame-NNNN.png and manifest.json with each frame's step, world hash and sha256.",
             """{"type":"object","properties":{"dir":{"type":"string"},"count":{"type":"integer","minimum":1,"maximum":3600},"stride":{"type":"integer","minimum":1},"axis":{"type":"string"},"source":{"type":"integer"},"size":{"type":"string"},"scale":{"type":"number"},"view":{"type":"integer"}},"required":["dir","count"]}""", true, CaptureSequence);
 
@@ -131,7 +143,7 @@ internal sealed class ScopeEndpoint : IControlEndpoint, IDisposable
 
     // ---- shared pieces -------------------------------------------------------------------------------------------------
 
-    private SourceSession SourceArg(Args a) => _shell.Source(a.Int("source") ?? _shell.ActiveSource);
+    private SourceSession SourceArg(Args a) => _shell.Source(a.Int("source") ?? a.Int("branch") ?? _shell.ActiveSource);
 
     private static void WriteSourceInfo(Utf8JsonWriter w, SourceSession s)
     {
@@ -175,10 +187,61 @@ internal sealed class ScopeEndpoint : IControlEndpoint, IDisposable
             w.WriteStartObject();
             w.WriteString("id", p.Id);
             w.WriteString("name", p.Name);
+            if (p.Role != PokeRole.None)
+            {
+                w.WriteString("role", p.Role == PokeRole.DragToPoint ? "drag" : p.Role.ToString().ToLowerInvariant());
+            }
+
+            w.WriteStartArray("params");
+            foreach (ParamInfo q in p.Params)
+            {
+                w.WriteStartObject();
+                w.WriteString("name", q.Name);
+                w.WriteString("kind", q.Kind.ToString().ToLowerInvariant());
+                w.WriteEndObject();
+            }
+
+            w.WriteEndArray();
             w.WriteEndObject();
         }
 
         w.WriteEndArray();
+        WriteForkInfo(w, s);
+    }
+
+    /// <summary>For a fork: its parent, where it was forked, where it diverges and how much it holds. Nothing for an opened file.</summary>
+    private static void WriteForkInfo(Utf8JsonWriter w, SourceSession s)
+    {
+        w.WriteString("label", s.Label);
+        if (s.Branch is not { } b || s.Parent is null)
+        {
+            return;
+        }
+
+        w.WriteStartObject("fork");
+        w.WriteNumber("parent", s.Parent.Index);
+        w.WriteNumber("forkStep", b.ForkStep);
+        if (b.DivergenceStep is long d)
+        {
+            w.WriteNumber("divergence", d);
+        }
+        else
+        {
+            w.WriteNull("divergence");
+        }
+
+        long poked = 0;
+        for (long i = b.ForkStep; i < s.History.StepCount; i++)
+        {
+            if (!s.History.Recording.InputAt(i).IsEmpty)
+            {
+                poked++;
+            }
+        }
+
+        w.WriteNumber("pokedSteps", poked);
+        w.WriteNumber("pending", b.PendingPokes);
+        w.WriteEndObject();
     }
 
     private static void WriteAxisList(Utf8JsonWriter w, string property, SourceSession s)
@@ -307,8 +370,14 @@ internal sealed class ScopeEndpoint : IControlEndpoint, IDisposable
         string axis = a.String("axis") ?? AxisIds.Time;
         if (axis == AxisIds.Time)
         {
-            long target = Math.Clamp(_shell.Step + delta, 0, _shell.MaxSteps);
-            _shell.Seek(target);
+            // Stepping forward on a fork that is at the end of its recording runs new steps in it (carrying queued pokes);
+            // everything else moves the shared cursor.
+            if (delta > 1_000_000 || delta < -1_000_000_000)
+            {
+                throw new ControlException("bad_args", "Argument 'delta' is too large; step forward at most 1000000 at a time.");
+            }
+
+            _shell.StepTime(delta, SourceArg(a));
         }
         else
         {
@@ -331,6 +400,373 @@ internal sealed class ScopeEndpoint : IControlEndpoint, IDisposable
         }
 
         return Cursor();
+    }
+
+    private string ForkOp(Args a)
+    {
+        RequireSources();
+        SourceSession parent = SourceArg(a);
+        long step = a.Long("step") ?? Math.Min(_shell.Step, parent.History.StepCount);
+        SourceSession fork = _shell.Fork(parent, step, a.Bool("view") ?? true);
+        return JsonOut.Build(w =>
+        {
+            w.WriteStartObject();
+            w.WriteNumber("branch", fork.Index);
+            WriteSourceInfo(w, fork);
+            w.WriteNumber("step", fork.History.CurrentStep);
+            w.WriteString("hash", JsonOut.Hex(fork.History.StateHash));
+            w.WriteNumber("views", _shell.Views.Count);
+            w.WriteEndObject();
+        });
+    }
+
+    /// <summary>The window rectangle of scene view <paramref name="index"/>; the view must be on screen, which takes a frame after it was added.</summary>
+    private OneGame.UI.Rect ViewRect(int index)
+    {
+        _shell.View(index);
+        if (_game.Ui.Find(ScopeStage.ViewId(index)) is not { IsEffectivelyVisible: true } element)
+        {
+            throw new ControlException("rejected", $"View {index} is not on screen; show it (view, layout) and capture a frame so it is laid out.");
+        }
+
+        return ViewPicking.Round(element.AbsoluteBounds);
+    }
+
+    private string PickOp(Args a)
+    {
+        RequireSources();
+        double x = a.Double("x") ?? throw new ControlException("bad_args", "Argument 'x' is required (window pixels).");
+        double y = a.Double("y") ?? throw new ControlException("bad_args", "Argument 'y' is required (window pixels).");
+        int? given = a.Int("view");
+        int index = -1;
+        if (given is int g)
+        {
+            index = g;
+        }
+        else
+        {
+            for (int i = 0; i < _shell.Views.Count && index < 0; i++)
+            {
+                if (_game.Ui.Find(ScopeStage.ViewId(i)) is { IsEffectivelyVisible: true } e && ViewPicking.Round(e.AbsoluteBounds).Contains((float)x, (float)y))
+                {
+                    index = i;
+                }
+            }
+
+            if (index < 0)
+            {
+                throw new ControlException("not_found", $"No scene view is under window pixel ({x}, {y}).");
+            }
+        }
+
+        ViewState view = _shell.View(index);
+        ViewPicking.Hit hit = ViewPicking.Pick(_shell, view, ViewRect(index), (float)x, (float)y);
+        return JsonOut.Build(w =>
+        {
+            w.WriteStartObject();
+            w.WriteNumber("view", index);
+            w.WriteNumber("source", view.Source);
+            if (hit.Entity.IsSome)
+            {
+                w.WriteNumber("entity", hit.Entity.Value);
+            }
+            else
+            {
+                w.WriteNull("entity");
+            }
+
+            w.WriteStartArray("point");
+            w.WriteNumberValue(hit.Point.X);
+            w.WriteNumberValue(hit.Point.Y);
+            w.WriteNumberValue(hit.Point.Z);
+            w.WriteEndArray();
+            w.WriteEndObject();
+        });
+    }
+
+    private string ProjectOp(Args a)
+    {
+        RequireSources();
+        long raw = a.RequiredLong("entity");
+        int index = a.Int("view") ?? -1;
+        if (index < 0)
+        {
+            int wanted = SourceArg(a).Index;
+            for (int i = 0; i < _shell.Views.Count && index < 0; i++)
+            {
+                index = _shell.Views[i].Source == wanted ? i : -1;
+            }
+
+            if (index < 0)
+            {
+                throw new ControlException("not_found", $"No view shows source {wanted}.");
+            }
+        }
+
+        ViewState view = _shell.View(index);
+        OneGame.UI.Rect rect = ViewRect(index);
+        if (raw <= 0 || !ViewPicking.Project(_shell, view, rect, new EntityId((ulong)raw), out Vector2 screen, out Vector3 world))
+        {
+            throw new ControlException("not_found", $"View {index} (source {view.Source}) draws nothing for entity {raw} at step {_shell.Source(view.Source).History.CurrentStep}; check the entity and that its overlay is on.");
+        }
+
+        return JsonOut.Build(w =>
+        {
+            w.WriteStartObject();
+            w.WriteNumber("view", index);
+            w.WriteNumber("entity", raw);
+            w.WriteNumber("x", Math.Round(screen.X, 2));
+            w.WriteNumber("y", Math.Round(screen.Y, 2));
+            w.WriteBoolean("onScreen", rect.Contains(screen.X, screen.Y));
+            w.WriteStartArray("world");
+            w.WriteNumberValue(world.X);
+            w.WriteNumberValue(world.Y);
+            w.WriteNumberValue(world.Z);
+            w.WriteEndArray();
+            w.WriteEndObject();
+        });
+    }
+
+    private string PokeOp(Args a)
+    {
+        RequireSources();
+        SourceSession s = SourceArg(a);
+        string? name = a.String("poke");
+        if (name is null)
+        {
+            return JsonOut.Build(w =>
+            {
+                w.WriteStartObject();
+                w.WriteNumber("source", s.Index);
+                w.WriteBoolean("fork", s.IsFork);
+                WriteSourceInfo(w, s);
+                w.WriteEndObject();
+            });
+        }
+
+        // An opened file refuses before anything else is looked at, so the error is the same whatever was asked.
+        ShellModel.RequireFork(s);
+        PokeInfo? info = null;
+        foreach (PokeInfo p in s.Info.Pokes)
+        {
+            if (string.Equals(p.Id, name, StringComparison.OrdinalIgnoreCase) || string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase))
+            {
+                info = p;
+                break;
+            }
+        }
+
+        if (info is not { } poke)
+        {
+            throw new ControlException("not_found", $"Source {s.Index} declares no poke '{name}'; its pokes are {string.Join(", ", s.Info.Pokes.Select(x => x.Id))}.");
+        }
+
+        ScopeValue[] values = ParsePokeArgs(poke, a.Element("args"));
+        long before = s.History.CurrentStep;
+        _shell.Poke(s, new PokeCall(poke.Id, values));
+        if (a.Bool("step") == true)
+        {
+            _shell.StepFork(s, 1);
+        }
+
+        return JsonOut.Build(w =>
+        {
+            w.WriteStartObject();
+            w.WriteNumber("source", s.Index);
+            w.WriteString("poke", poke.Id);
+            w.WriteNumber("appliesAtStep", before);
+            w.WriteNumber("pending", s.Branch!.PendingPokes);
+            w.WriteNumber("step", s.History.CurrentStep);
+            w.WriteString("hash", JsonOut.Hex(s.History.StateHash));
+            w.WriteEndObject();
+        });
+    }
+
+    private static ScopeValue[] ParsePokeArgs(PokeInfo poke, JsonElement? args)
+    {
+        ParamInfo[] ps = poke.Params;
+        var values = new ScopeValue[ps.Length];
+        JsonElement none = default;
+        JsonElement given = args ?? none;
+        if (given.ValueKind == JsonValueKind.Array)
+        {
+            if (given.GetArrayLength() != ps.Length)
+            {
+                throw new ControlException("bad_args", $"Poke '{poke.Id}' takes {ps.Length} arguments ({ParamList(ps)}), got {given.GetArrayLength()}.");
+            }
+
+            int i = 0;
+            foreach (JsonElement e in given.EnumerateArray())
+            {
+                values[i] = ToValue(poke, ps[i], e);
+                i++;
+            }
+
+            return values;
+        }
+
+        if (given.ValueKind is not (JsonValueKind.Object or JsonValueKind.Undefined))
+        {
+            throw new ControlException("bad_args", $"Argument 'args' must be an object by parameter name or an array in parameter order: {ParamList(ps)}.");
+        }
+
+        for (int i = 0; i < ps.Length; i++)
+        {
+            if (given.ValueKind != JsonValueKind.Object || !given.TryGetProperty(ps[i].Name, out JsonElement e))
+            {
+                throw new ControlException("bad_args", $"Poke '{poke.Id}' needs argument '{ps[i].Name}' ({ps[i].Kind.ToString().ToLowerInvariant()}); its arguments are {ParamList(ps)}.");
+            }
+
+            values[i] = ToValue(poke, ps[i], e);
+        }
+
+        if (given.ValueKind == JsonValueKind.Object)
+        {
+            foreach (JsonProperty extra in given.EnumerateObject())
+            {
+                if (!ps.Any(p => p.Name == extra.Name))
+                {
+                    throw new ControlException("bad_args", $"Poke '{poke.Id}' has no argument '{extra.Name}'; its arguments are {ParamList(ps)}.");
+                }
+            }
+        }
+
+        return values;
+    }
+
+    private static string ParamList(ParamInfo[] ps) => ps.Length == 0 ? "none" : string.Join(", ", ps.Select(p => $"{p.Name}: {p.Kind.ToString().ToLowerInvariant()}"));
+
+    private static ScopeValue ToValue(PokeInfo poke, ParamInfo param, JsonElement e)
+    {
+        string where = $"Poke '{poke.Id}' argument '{param.Name}'";
+        switch (param.Kind)
+        {
+            case ValueKind.Bool when e.ValueKind is JsonValueKind.True or JsonValueKind.False:
+                return ScopeValue.OfBool(e.GetBoolean());
+            case ValueKind.Integer when e.ValueKind == JsonValueKind.Number && e.TryGetInt64(out long l):
+                return ScopeValue.OfInteger(l);
+            case ValueKind.Number when e.ValueKind == JsonValueKind.Number && e.TryGetDouble(out double d) && double.IsFinite(d):
+                return ScopeValue.OfNumber(d);
+            case ValueKind.Text when e.ValueKind == JsonValueKind.String:
+                return ScopeValue.OfText(e.GetString()!);
+            case ValueKind.Entity when e.ValueKind == JsonValueKind.Number && e.TryGetInt64(out long id) && id > 0:
+                return ScopeValue.OfEntity(new EntityId((ulong)id));
+            case ValueKind.Vector when e.ValueKind == JsonValueKind.Array && e.GetArrayLength() is 2 or 3:
+                {
+                    Span<float> c = stackalloc float[3];
+                    int i = 0;
+                    foreach (JsonElement x in e.EnumerateArray())
+                    {
+                        if (x.ValueKind != JsonValueKind.Number || !x.TryGetDouble(out double v) || !double.IsFinite(v))
+                        {
+                            throw new ControlException("bad_args", $"{where} must be an array of 2 or 3 finite numbers.");
+                        }
+
+                        c[i++] = (float)v;
+                    }
+
+                    return ScopeValue.OfVector(new Vector3(c[0], c[1], c[2]));
+                }
+
+            default:
+                string expected = param.Kind switch
+                {
+                    ValueKind.Bool => "true or false",
+                    ValueKind.Integer => "an integer",
+                    ValueKind.Number => "a finite number",
+                    ValueKind.Text => "a string",
+                    ValueKind.Entity => "a positive entity id (an integer)",
+                    ValueKind.Vector => "an array of 2 or 3 numbers",
+                    _ => param.Kind.ToString(),
+                };
+                throw new ControlException("bad_args", $"{where} must be {expected}.");
+        }
+    }
+
+    private string DiffOp(Args a)
+    {
+        RequireSources();
+        SourceSession s = SourceArg(a);
+        SourceSession other = a.Int("other") is int o
+            ? _shell.Source(o)
+            : s.Parent ?? throw new ControlException("bad_args", $"Source {s.Index} is an opened file with no parent; name the source to compare with in 'other'.");
+        long step = a.Long("step") ?? Math.Min(_shell.Step, Math.Min(s.History.StepCount, other.History.StepCount));
+        Difference? diff = _shell.Diff(s, other, step, out ulong hashA, out ulong hashB);
+        long? divergence = s.Branch is { } b && ReferenceEquals(s.Parent, other) ? b.DivergenceStep : null;
+        return JsonOut.Build(w =>
+        {
+            w.WriteStartObject();
+            w.WriteNumber("source", s.Index);
+            w.WriteNumber("other", other.Index);
+            w.WriteNumber("step", step);
+            w.WriteBoolean("equal", diff is null);
+            w.WriteString("hash", JsonOut.Hex(hashA));
+            w.WriteString("otherHash", JsonOut.Hex(hashB));
+            if (divergence is long d)
+            {
+                w.WriteNumber("divergence", d);
+            }
+            else
+            {
+                w.WriteNull("divergence");
+            }
+
+            if (diff is { } x)
+            {
+                w.WriteStartObject("difference");
+                w.WriteNumber("entity", x.Entity.Value);
+                w.WriteString("field", x.Field);
+                w.WriteString("value", x.Left);
+                w.WriteString("otherValue", x.Right);
+                w.WriteEndObject();
+            }
+            else
+            {
+                w.WriteNull("difference");
+            }
+
+            w.WriteEndObject();
+        });
+    }
+
+    private string ReplaySave(Args a)
+    {
+        RequireSources();
+        SourceSession s = SourceArg(a);
+        string relative = a.RequiredString("path");
+        string full = ResolveInside(relative);
+        foreach (SourceSession other in _shell.Sources)
+        {
+            if (string.Equals(Path.GetFullPath(other.Path), full, StringComparison.Ordinal))
+            {
+                throw new ControlException("rejected", $"'{relative}' is the file source {other.Index} was opened from; save to a new file.");
+            }
+        }
+
+        var buffer = new System.Buffers.ArrayBufferWriter<byte>();
+        s.Source.WriteReplay(buffer);
+        Directory.CreateDirectory(Path.GetDirectoryName(full)!);
+        File.WriteAllBytes(full, buffer.WrittenSpan);
+        string sha = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(buffer.WrittenSpan));
+        return JsonOut.Build(w =>
+        {
+            w.WriteStartObject();
+            w.WriteNumber("source", s.Index);
+            w.WriteString("path", full);
+            w.WriteNumber("bytes", buffer.WrittenCount);
+            w.WriteString("sha256", sha);
+            w.WriteNumber("steps", s.History.StepCount);
+            if (s.Branch?.DivergenceStep is long d)
+            {
+                w.WriteNumber("divergence", d);
+            }
+            else
+            {
+                w.WriteNull("divergence");
+            }
+
+            w.WriteEndObject();
+        });
     }
 
     private string Play(Args a)
@@ -819,6 +1255,21 @@ internal sealed class ScopeEndpoint : IControlEndpoint, IDisposable
     private ControlResult CaptureFrame(Args a)
     {
         int? view = a.Int("view");
+        if (view is null && (a.Has("source") || a.Has("branch")))
+        {
+            // Capture a source (a fork, say) by name: its first view, full size.
+            int wanted = SourceArg(a).Index;
+            for (int i = 0; i < _shell.Views.Count && view is null; i++)
+            {
+                view = _shell.Views[i].Source == wanted ? i : null;
+            }
+
+            if (view is null)
+            {
+                throw new ControlException("not_found", $"No view shows source {wanted}; add one with the view operation (add, then source).");
+            }
+        }
+
         if (view is int v)
         {
             _shell.View(v);

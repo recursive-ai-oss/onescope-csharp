@@ -161,7 +161,7 @@ internal static class Plane2DRenderer
         cache.Labels.Add(new ScreenLabel(rect.X + 6, rect.Bottom - 18, $"grid {GridMath.Format(step)} {info.Unit.Name}", new UiColor(170, 176, 190), 11));
     }
 
-    public static void Draw(OneGame.Render2D.UiCanvas ui, OneGame.UI.Rect rect, ViewState view, ViewCache cache)
+    public static void Draw(OneGame.Render2D.UiCanvas ui, OneGame.UI.Rect rect, ViewState view, ViewCache cache, EntityId selected = default)
     {
         Frame f = MakeFrame(view, rect);
         ui.PushClip(rect);
@@ -176,69 +176,88 @@ internal static class Plane2DRenderer
         for (int k = 0; k < items.Length; k++)
         {
             ref readonly DrawItem item = ref items[cache.Order[k]];
-            UiColor color = ToUi(item.Color);
-            bool wire = view.Wireframe || (item.Flags & DrawFlags.Wireframe) != 0;
-            switch (item.Kind)
+            DrawOne(ui, rect, f, list, item, ToUi(item.Color), view.Wireframe || (item.Flags & DrawFlags.Wireframe) != 0, 1.2f);
+        }
+
+        if (selected.IsSome)
+        {
+            // The selection is outlined on top of everything, thick and in one colour, so it reads in any state colour.
+            for (int k = 0; k < items.Length; k++)
             {
-                case DrawKind.Line:
-                    Line(ui, f.ToScreen(item.A), f.ToScreen(item.B), 1.5f, color);
-                    break;
-                case DrawKind.Point:
-                    {
-                        Vector2 p = f.ToScreen(item.A);
-                        float r = Math.Max(item.Size.X, 1) / 2;
-                        ui.Fill(new OneGame.UI.Rect(p.X - r, p.Y - r, r * 2, r * 2), color, new OneGame.UI.CornerRadii(r, r, r, r));
-                        break;
-                    }
-
-                case DrawKind.Triangle:
-                    Triangle(ui, rect, f.ToScreen(item.A), f.ToScreen(item.B), f.ToScreen(item.C), color, wire);
-                    break;
-                case DrawKind.Mesh:
-                    {
-                        ReadOnlySpan<Vector3> vertices = list.Vertices;
-                        ReadOnlySpan<int> indices = list.Indices;
-                        int cap = Math.Min(item.Count, 3 * 20000);
-                        for (int t = 0; t + 2 < cap; t += 3)
-                        {
-                            Triangle(ui, rect, f.ToScreen(vertices[indices[item.First + t]]), f.ToScreen(vertices[indices[item.First + t + 1]]), f.ToScreen(vertices[indices[item.First + t + 2]]), color, wire);
-                        }
-
-                        break;
-                    }
-
-                case DrawKind.Box:
-                    Box(ui, f, item, color, wire);
-                    break;
-                case DrawKind.Sphere:
-                    {
-                        Vector2 p = f.ToScreen(item.A);
-                        float r = item.Size.X * f.PixelsPerUnit;
-                        var rr = new OneGame.UI.CornerRadii(r, r, r, r);
-                        var box = new OneGame.UI.Rect(p.X - r, p.Y - r, r * 2, r * 2);
-                        if (wire)
-                        {
-                            ui.Border(box, color, new OneGame.UI.Edges(1.2f, 1.2f, 1.2f, 1.2f), rr);
-                        }
-                        else
-                        {
-                            ui.Fill(box, color, rr);
-                        }
-
-                        break;
-                    }
-
-                case DrawKind.Capsule:
-                case DrawKind.Cylinder:
-                    Bar(ui, f.ToScreen(item.A), f.ToScreen(item.B), item.Size.X * f.PixelsPerUnit, item.Kind == DrawKind.Capsule, color, wire);
-                    break;
-                case DrawKind.Arrow:
-                    Arrow(ui, f.ToScreen(item.A), f.ToScreen(item.B), Math.Max(item.Size.X * f.PixelsPerUnit, 6), color);
-                    break;
+                ref readonly DrawItem item = ref items[cache.Order[k]];
+                if (item.Entity == selected && item.Kind != DrawKind.Label)
+                {
+                    DrawOne(ui, rect, f, list, item, Highlight, true, 3f);
+                }
             }
         }
 
         ui.PopClip();
+    }
+
+    /// <summary>The colour the selected entity is outlined in.</summary>
+    internal static readonly UiColor Highlight = new(255, 214, 64);
+
+    private static void DrawOne(OneGame.Render2D.UiCanvas ui, OneGame.UI.Rect rect, Frame f, DrawList list, in DrawItem item, UiColor color, bool wire, float edge)
+    {
+        switch (item.Kind)
+        {
+            case DrawKind.Line:
+                Line(ui, f.ToScreen(item.A), f.ToScreen(item.B), Math.Max(1.5f, edge), color);
+                break;
+            case DrawKind.Point:
+                {
+                    Vector2 p = f.ToScreen(item.A);
+                    float r = Math.Max(item.Size.X, 1) / 2;
+                    ui.Fill(new OneGame.UI.Rect(p.X - r, p.Y - r, r * 2, r * 2), color, new OneGame.UI.CornerRadii(r, r, r, r));
+                    break;
+                }
+
+            case DrawKind.Triangle:
+                Triangle(ui, rect, f.ToScreen(item.A), f.ToScreen(item.B), f.ToScreen(item.C), color, wire, edge);
+                break;
+            case DrawKind.Mesh:
+                {
+                    ReadOnlySpan<Vector3> vertices = list.Vertices;
+                    ReadOnlySpan<int> indices = list.Indices;
+                    int cap = Math.Min(item.Count, 3 * 20000);
+                    for (int t = 0; t + 2 < cap; t += 3)
+                    {
+                        Triangle(ui, rect, f.ToScreen(vertices[indices[item.First + t]]), f.ToScreen(vertices[indices[item.First + t + 1]]), f.ToScreen(vertices[indices[item.First + t + 2]]), color, wire, edge);
+                    }
+
+                    break;
+                }
+
+            case DrawKind.Box:
+                Box(ui, f, item, color, wire, edge);
+                break;
+            case DrawKind.Sphere:
+                {
+                    Vector2 p = f.ToScreen(item.A);
+                    float r = item.Size.X * f.PixelsPerUnit;
+                    var rr = new OneGame.UI.CornerRadii(r, r, r, r);
+                    var box = new OneGame.UI.Rect(p.X - r, p.Y - r, r * 2, r * 2);
+                    if (wire)
+                    {
+                        ui.Border(box, color, new OneGame.UI.Edges(edge, edge, edge, edge), rr);
+                    }
+                    else
+                    {
+                        ui.Fill(box, color, rr);
+                    }
+
+                    break;
+                }
+
+            case DrawKind.Capsule:
+            case DrawKind.Cylinder:
+                Bar(ui, f.ToScreen(item.A), f.ToScreen(item.B), item.Size.X * f.PixelsPerUnit, item.Kind == DrawKind.Capsule, color, wire, edge);
+                break;
+            case DrawKind.Arrow:
+                Arrow(ui, f.ToScreen(item.A), f.ToScreen(item.B), Math.Max(item.Size.X * f.PixelsPerUnit, 6), color);
+                break;
+        }
     }
 
     private static void DrawGrid(OneGame.Render2D.UiCanvas ui, OneGame.UI.Rect rect, Frame f)
@@ -276,13 +295,13 @@ internal static class Plane2DRenderer
         ui.PopTransform();
     }
 
-    private static void Triangle(OneGame.Render2D.UiCanvas ui, OneGame.UI.Rect clip, Vector2 a, Vector2 b, Vector2 c, UiColor color, bool wire)
+    private static void Triangle(OneGame.Render2D.UiCanvas ui, OneGame.UI.Rect clip, Vector2 a, Vector2 b, Vector2 c, UiColor color, bool wire, float edge)
     {
         if (wire)
         {
-            Line(ui, a, b, 1.2f, color);
-            Line(ui, b, c, 1.2f, color);
-            Line(ui, c, a, 1.2f, color);
+            Line(ui, a, b, edge, color);
+            Line(ui, b, c, edge, color);
+            Line(ui, c, a, edge, color);
             return;
         }
 
@@ -314,7 +333,7 @@ internal static class Plane2DRenderer
         }
     }
 
-    private static void Box(OneGame.Render2D.UiCanvas ui, Frame f, in DrawItem item, UiColor color, bool wire)
+    private static void Box(OneGame.Render2D.UiCanvas ui, Frame f, in DrawItem item, UiColor color, bool wire, float edge)
     {
         Quaternion q = item.Rotation;
         float angle = MathF.Atan2(2 * ((q.W * q.Z) + (q.X * q.Y)), 1 - (2 * ((q.Y * q.Y) + (q.Z * q.Z))));
@@ -325,7 +344,7 @@ internal static class Plane2DRenderer
         var box = new OneGame.UI.Rect(c.X - hw, c.Y - hh, hw * 2, Math.Max(hh * 2, 1));
         if (wire)
         {
-            ui.Border(box, color, new OneGame.UI.Edges(1.2f, 1.2f, 1.2f, 1.2f));
+            ui.Border(box, color, new OneGame.UI.Edges(edge, edge, edge, edge));
         }
         else
         {
@@ -335,7 +354,7 @@ internal static class Plane2DRenderer
         ui.PopTransform();
     }
 
-    private static void Bar(OneGame.Render2D.UiCanvas ui, Vector2 a, Vector2 b, float radius, bool rounded, UiColor color, bool wire)
+    private static void Bar(OneGame.Render2D.UiCanvas ui, Vector2 a, Vector2 b, float radius, bool rounded, UiColor color, bool wire, float edge)
     {
         Vector2 d = b - a;
         float len = d.Length();
@@ -346,7 +365,7 @@ internal static class Plane2DRenderer
         var radii = rounded ? new OneGame.UI.CornerRadii(radius, radius, radius, radius) : default;
         if (wire)
         {
-            ui.Border(box, color, new OneGame.UI.Edges(1.2f, 1.2f, 1.2f, 1.2f), radii);
+            ui.Border(box, color, new OneGame.UI.Edges(edge, edge, edge, edge), radii);
         }
         else
         {
