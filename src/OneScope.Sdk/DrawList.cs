@@ -44,7 +44,8 @@ public enum DrawFlags : byte
 /// <param name="Overlay">The overlay this item belongs to, 0 to 63 (see <see cref="OverlayInfo"/>). The app hides it when that overlay is off.</param>
 /// <param name="Layer">Draw order within a view; higher layers draw later. Not a depth value.</param>
 /// <param name="Flags">Drawing modifiers.</param>
-public readonly record struct DrawStyle(Color32 Color, int Overlay = 0, int Layer = 0, DrawFlags Flags = DrawFlags.None);
+/// <param name="Entity">The entity this item shows, or <see cref="EntityId.None"/>. The app picks it under the pointer and highlights it when selected.</param>
+public readonly record struct DrawStyle(Color32 Color, int Overlay = 0, int Layer = 0, DrawFlags Flags = DrawFlags.None, EntityId Entity = default);
 
 /// <summary>
 /// One primitive in a <see cref="DrawList"/>. Which fields are used depends on <see cref="Kind"/>; unused fields are zero.
@@ -66,6 +67,9 @@ public struct DrawItem
 
     /// <summary>The colour.</summary>
     public Color32 Color;
+
+    /// <summary>The entity this item shows, or <see cref="EntityId.None"/>.</summary>
+    public EntityId Entity;
 
     /// <summary>First position (start, centre or anchor).</summary>
     public Vector3 A;
@@ -304,6 +308,7 @@ public sealed class DrawList
         item.Overlay = (byte)(style.Overlay & 63);
         item.Layer = style.Layer;
         item.Color = style.Color;
+        item.Entity = style.Entity;
         item.Rotation = Quaternion.Identity;
         return ref item;
     }

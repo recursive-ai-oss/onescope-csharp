@@ -72,7 +72,7 @@ public sealed class TestModule : IScopeModule
         Pokes =
         [
             new PokeInfo("impulse", "Impulse", [new ParamInfo("target", ValueKind.Entity), new ParamInfo("delta", ValueKind.Vector)]),
-            new PokeInfo("teleport", "Teleport", [new ParamInfo("target", ValueKind.Entity), new ParamInfo("position", ValueKind.Vector)]),
+            new PokeInfo("teleport", "Teleport", [new ParamInfo("target", ValueKind.Entity), new ParamInfo("position", ValueKind.Vector)]) { Role = PokeRole.DragToPoint },
             new PokeInfo("remove", "Remove", [new ParamInfo("target", ValueKind.Entity)]),
             new PokeInfo("set_gravity", "Set gravity", [new ParamInfo("gravity", ValueKind.Integer)]),
         ],

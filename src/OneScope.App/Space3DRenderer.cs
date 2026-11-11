@@ -35,7 +35,7 @@ internal sealed class Space3DRenderer : IDisposable
     }
 
     /// <summary>Rebuilds the cache's scene from the source at its cursor and renders it. Returns the texture holding the picture.</summary>
-    public Texture2D Render(Renderer2D r2, ViewCache cache, ViewState view, SourceSession source, OneGame.UI.Rect rect)
+    public Texture2D Render(Renderer2D r2, ViewCache cache, ViewState view, SourceSession source, OneGame.UI.Rect rect, EntityId selected = default)
     {
         int w = Math.Clamp((int)MathF.Round(rect.Width), 1, 4096);
         int h = Math.Clamp((int)MathF.Round(rect.Height), 1, 4096);
@@ -76,6 +76,21 @@ internal sealed class Space3DRenderer : IDisposable
             if (item.Kind == DrawKind.Label && Project(viewProj, item.A, rect, out Vector2 p))
             {
                 cache.Labels.Add(new ScreenLabel(p.X, p.Y - 7, new string(list.TextOf(in item)), Plane2DRenderer.ToUi(item.Color), 12));
+            }
+        }
+
+        if (selected.IsSome)
+        {
+            // The selection is outlined in one colour, always on top, so it reads in any state colour and behind other bodies.
+            foreach (ref readonly DrawItem item in list.Items)
+            {
+                if (item.Entity == selected && item.Kind != DrawKind.Label)
+                {
+                    DrawItem outline = item;
+                    outline.Color = new Color32(255, 214, 64, 255);
+                    outline.Flags |= DrawFlags.OnTop;
+                    AddItem(scene, solids, list, outline, wire: true, width: 3f);
+                }
             }
         }
 
@@ -159,7 +174,7 @@ internal sealed class Space3DRenderer : IDisposable
         cache.Labels.Add(new ScreenLabel(rect.X + 6, rect.Bottom - 18, $"grid {GridMath.Format(step)} {info.Unit.Name}", new UiColor(170, 176, 190), 11));
     }
 
-    private static void AddItem(Scene3D scene, SolidBuilder solids, DrawList list, in DrawItem item, bool wire)
+    private static void AddItem(Scene3D scene, SolidBuilder solids, DrawList list, in DrawItem item, bool wire, float width = 1.2f)
     {
         Vector4 colour = SolidBuilder.Linear(item.Color);
         DebugDepth3D mode = (item.Flags & DrawFlags.OnTop) != 0 ? DebugDepth3D.AlwaysOnTop : DebugDepth3D.DepthTested;
@@ -178,9 +193,9 @@ internal sealed class Space3DRenderer : IDisposable
             case DrawKind.Triangle:
                 if (wire)
                 {
-                    dbg.Line(item.A, item.B, colour, 1.2f, DebugSize3D.Pixels, mode);
-                    dbg.Line(item.B, item.C, colour, 1.2f, DebugSize3D.Pixels, mode);
-                    dbg.Line(item.C, item.A, colour, 1.2f, DebugSize3D.Pixels, mode);
+                    dbg.Line(item.A, item.B, colour, width, DebugSize3D.Pixels, mode);
+                    dbg.Line(item.B, item.C, colour, width, DebugSize3D.Pixels, mode);
+                    dbg.Line(item.C, item.A, colour, width, DebugSize3D.Pixels, mode);
                 }
                 else
                 {
@@ -196,9 +211,9 @@ internal sealed class Space3DRenderer : IDisposable
                     for (int t = 0; t + 2 < item.Count; t += 3)
                     {
                         Vector3 a = v[idx[item.First + t]], b = v[idx[item.First + t + 1]], c = v[idx[item.First + t + 2]];
-                        dbg.Line(a, b, colour, 1.2f, DebugSize3D.Pixels, mode);
-                        dbg.Line(b, c, colour, 1.2f, DebugSize3D.Pixels, mode);
-                        dbg.Line(c, a, colour, 1.2f, DebugSize3D.Pixels, mode);
+                        dbg.Line(a, b, colour, width, DebugSize3D.Pixels, mode);
+                        dbg.Line(b, c, colour, width, DebugSize3D.Pixels, mode);
+                        dbg.Line(c, a, colour, width, DebugSize3D.Pixels, mode);
                     }
                 }
                 else
@@ -210,7 +225,7 @@ internal sealed class Space3DRenderer : IDisposable
             case DrawKind.Box:
                 if (wire)
                 {
-                    BoxEdges(dbg, item, colour, mode);
+                    BoxEdges(dbg, item, colour, mode, width);
                 }
                 else
                 {
@@ -221,9 +236,9 @@ internal sealed class Space3DRenderer : IDisposable
             case DrawKind.Sphere:
                 if (wire)
                 {
-                    Circle(dbg, item.A, Vector3.UnitX, Vector3.UnitY, item.Size.X, colour, mode);
-                    Circle(dbg, item.A, Vector3.UnitY, Vector3.UnitZ, item.Size.X, colour, mode);
-                    Circle(dbg, item.A, Vector3.UnitX, Vector3.UnitZ, item.Size.X, colour, mode);
+                    Circle(dbg, item.A, Vector3.UnitX, Vector3.UnitY, item.Size.X, colour, mode, width);
+                    Circle(dbg, item.A, Vector3.UnitY, Vector3.UnitZ, item.Size.X, colour, mode, width);
+                    Circle(dbg, item.A, Vector3.UnitX, Vector3.UnitZ, item.Size.X, colour, mode, width);
                 }
                 else
                 {
@@ -236,11 +251,11 @@ internal sealed class Space3DRenderer : IDisposable
                 if (wire)
                 {
                     SolidBuilder.Axis(item.A, item.B, out _, out Vector3 u, out Vector3 w);
-                    Circle(dbg, item.A, u, w, item.Size.X, colour, mode);
-                    Circle(dbg, item.B, u, w, item.Size.X, colour, mode);
+                    Circle(dbg, item.A, u, w, item.Size.X, colour, mode, width);
+                    Circle(dbg, item.B, u, w, item.Size.X, colour, mode, width);
                     foreach (Vector3 s in new[] { u, -u, w, -w })
                     {
-                        dbg.Line(item.A + (s * item.Size.X), item.B + (s * item.Size.X), colour, 1.2f, DebugSize3D.Pixels, mode);
+                        dbg.Line(item.A + (s * item.Size.X), item.B + (s * item.Size.X), colour, width, DebugSize3D.Pixels, mode);
                     }
                 }
                 else if (item.Kind == DrawKind.Capsule)
@@ -256,7 +271,7 @@ internal sealed class Space3DRenderer : IDisposable
         }
     }
 
-    private static void BoxEdges(DebugDraw3D dbg, in DrawItem item, Vector4 colour, DebugDepth3D mode)
+    private static void BoxEdges(DebugDraw3D dbg, in DrawItem item, Vector4 colour, DebugDepth3D mode, float width)
     {
         Span<Vector3> corners = stackalloc Vector3[8];
         for (int i = 0; i < 8; i++)
@@ -271,13 +286,13 @@ internal sealed class Space3DRenderer : IDisposable
             {
                 if ((i & bit) == 0)
                 {
-                    dbg.Line(corners[i], corners[i | bit], colour, 1.2f, DebugSize3D.Pixels, mode);
+                    dbg.Line(corners[i], corners[i | bit], colour, width, DebugSize3D.Pixels, mode);
                 }
             }
         }
     }
 
-    private static void Circle(DebugDraw3D dbg, Vector3 centre, Vector3 u, Vector3 v, float radius, Vector4 colour, DebugDepth3D mode)
+    private static void Circle(DebugDraw3D dbg, Vector3 centre, Vector3 u, Vector3 v, float radius, Vector4 colour, DebugDepth3D mode, float width)
     {
         const int Steps = 24;
         Vector3 prev = centre + (u * radius);
@@ -285,7 +300,7 @@ internal sealed class Space3DRenderer : IDisposable
         {
             float t = 2 * MathF.PI * i / Steps;
             Vector3 next = centre + (((u * MathF.Cos(t)) + (v * MathF.Sin(t))) * radius);
-            dbg.Line(prev, next, colour, 1.2f, DebugSize3D.Pixels, mode);
+            dbg.Line(prev, next, colour, width, DebugSize3D.Pixels, mode);
             prev = next;
         }
     }

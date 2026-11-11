@@ -33,11 +33,29 @@ public readonly record struct OverlayInfo(int Id, string Name, bool DefaultOn);
 /// <param name="Kind">The kind of <see cref="ScopeValue"/> expected.</param>
 public readonly record struct ParamInfo(string Name, ValueKind Kind);
 
+/// <summary>What the app may use a poke for beyond calling it by name.</summary>
+public enum PokeRole : byte
+{
+    /// <summary>A plain poke, called by name.</summary>
+    None = 0,
+
+    /// <summary>
+    /// Dragging an entity to a point. The poke takes exactly two parameters: an entity, then a vector (in the source's length unit;
+    /// Z is zero in a 2D source). A pointer drag in a view calls it with the entity under the pointer and the point under the pointer
+    /// on every step of the drag.
+    /// </summary>
+    DragToPoint,
+}
+
 /// <summary>An operation a user or agent may apply to a fork.</summary>
 /// <param name="Id">Stable id, unique within the source.</param>
 /// <param name="Name">Display name.</param>
 /// <param name="Params">The parameters, in call order.</param>
-public readonly record struct PokeInfo(string Id, string Name, ParamInfo[] Params);
+public readonly record struct PokeInfo(string Id, string Name, ParamInfo[] Params)
+{
+    /// <summary>What the app may use the poke for besides calling it by name. Default <see cref="PokeRole.None"/>.</summary>
+    public PokeRole Role { get; init; }
+}
 
 /// <summary>How a timeline track is drawn and what its samples mean.</summary>
 public enum TrackKind : byte

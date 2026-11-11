@@ -41,6 +41,12 @@ Hashes are 16 lowercase hex digits. Entity ids are the module's integers. Every 
 | `overlay` | `view`?, `overlay`? (name or id), `on`? (toggles when omitted), `wireframe`?, `grid`? | `view`, `kind`, `wireframe`, `grid`, `overlays[] {id, name, on}` |
 | `axes` | `source`? | `step`, `axes[] {id, name, length, position}` |
 | `findings` | `source`?, `from`?, `to`?, `severity`?, `limit`? | `scannedThrough`, `findings[] {step, code, severity, entities, text, suggestedChange}`, `count`, `truncated` |
+| `fork` | `source`? (default the active one), `step`? (default the shared cursor), `view`? (default true: add a view of the fork) | the new source (every `open` field plus `fork {parent, forkStep, divergence, pokedSteps, pending}`) and `branch`, its number |
+| `poke` | `source`, `poke` (id or name), `args` (object by parameter name, or array in order), `step`? (run one step now) | `source`, `poke`, `appliesAtStep`, `pending`, `step`, `hash`. Without `poke`: the source's declarations with each poke's parameters |
+| `diff` | `source` (a fork), `other`? (default its parent), `step`? (default the cursor, at most the shorter recording) | `source`, `other`, `step`, `equal`, `hash`, `otherHash` (at that step), `divergence`, `difference {entity, field, value, otherValue}` or null |
+| `replay_save` | `source`, `path` (a new file in the output folder) | `path`, `bytes`, `sha256`, `steps`, `divergence` |
+| `pick` | `x`, `y` (window pixels), `view`? | `view`, `source`, `entity` or null, `point` (world) |
+| `project` | `entity`, `view`? or `source`? | `view`, `entity`, `x`, `y` (window pixels), `onScreen`, `world` |
 | `view` | nothing to list; `add` (`2d`/`3d`), or `index` with `remove`, `source`, `target`, `halfHeight` (2D), `distance`, `yaw`, `pitch` (3D), `frame`, `wireframe`, `grid`, `active` | `active`, `views[]` |
 | `layout` | `entities`?, `inspector`?, `timeline`?, `log`? (booleans) | the panel states |
 | `capture_frame` | `path`? (inside the output folder), `size`? (`720p`, `1080p`, `WxH`), `scale`?, `view`? (that view alone, full size), `presented`? | `path`, `width`, `height`, `scale`, `sha256`, `renderer`, `target`, `step`, `hashes[]`; over MCP the PNG travels as image content |
@@ -49,15 +55,30 @@ Hashes are 16 lowercase hex digits. Entity ids are the module's integers. Every 
 onegame's own `info`, `ui_tree`, `ui_query`, `ui_click`, `ui_hit`, `ui_scale`, `input_pointer`, `input_key`, `input_text`, `window`, `render_graph`
 and `quit` are served unchanged (`docs/interfaces/control.md` in onegame).
 
+## Forks and pokes
+
+`fork` makes a new source whose recording starts as a copy of its parent's up to a step. Opened files are read-only: `poke` on one fails with `read_only`.
+A poke is queued on a fork and takes effect on its next step; `step` with the fork as `source` (or active) at the end of its recording runs new steps
+in it, the first one carrying the queued pokes, and the shared cursor follows. Seeking a fork back and forth replays its recording, so it gives the
+hashes the straight run gave. `diff` compares a fork with its parent at a step and names the first differing entity and field in the module's order.
+`divergence` is the first step whose recorded input differs, so the two worlds are equal at it and differ from the next step. `replay_save` writes the
+fork's replay; opened again, it gives the fork's hashes at every step. A fork of a fork is allowed; `Parent` chains.
+
+A press in a scene view selects the entity under it, which is outlined in every view of the same file. On a fork, and when the module declares a drag poke
+(`PokeRole.DragToPoint`), the press also grabs the entity: each pointer move is one step of the fork with that poke aimed at the pointer (on the view plane in 2D,
+on the plane through the grabbed point facing the camera in 3D), and releasing ends the drag. Elsewhere a drag moves the camera. `pick` and `project` give an
+agent the same hit test and the pixel to press, so it can script a drag with `input_pointer`.
+
 Error codes: `bad_args` (the message names the argument and what it must be), `not_found` (a file, source, view, entity or overlay),
 `no_source`, `no_module`, `bad_format` (the file is not one any loaded module opens; the message names the file and each module's complaint),
-`bad_module`, `too_large`, `path_outside` (an output path leaving the output folder), `rejected`, `unknown_op`.
+`bad_module`, `too_large`, `path_outside` (an output path leaving the output folder), `rejected`, `read_only` (poking an opened file), `unknown_op`.
 
 ## Pictures
 
 The shell draws the panels with onegame's UI, the 2D views with the 2D renderer's canvas (rotated, rounded rectangles clipped to the view) and
 the 3D views with the 3D renderer: solids become one lit mesh, lines, points, arrows and wireframes are the renderer's debug lines, the ground
 grid is labelled in the source's length unit. A 3D view is rendered offscreen and placed in the layout by the 2D renderer, and the labels and
-the timeline are painted over everything. Captures of the same state are byte-identical run to run on the same renderer; the committed goldens
+the timeline are painted over everything. Forks hang below the time axis as branches: a line from the step they were forked at to the end of their recording,
+joined to the time axis, with a marker at the divergence step. Captures of the same state are byte-identical run to run on the same renderer; the committed goldens
 in `tests/OneScope.App.Tests/goldens` come from lavapipe (`VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json`). Triangles and meshes in a 2D view
 are filled by one-pixel strips because the canvas has rectangles and rounded rectangles only.

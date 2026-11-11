@@ -50,8 +50,10 @@ internal sealed class ViewState
 /// <summary>An opened file: the module, the source it produced and its history.</summary>
 internal sealed class SourceSession
 {
-    public SourceSession(int index, string path, IScopeModule module, IScopeSource source, History history, int keyframeInterval)
+    public SourceSession(int index, string path, IScopeModule module, IScopeSource source, History history, int keyframeInterval, SourceSession? parent = null, Branch? branch = null)
     {
+        Parent = parent;
+        Branch = branch;
         KeyframeInterval = keyframeInterval;
         Index = index;
         Path = path;
@@ -61,6 +63,37 @@ internal sealed class SourceSession
     }
 
     public int Index { get; }
+
+    /// <summary>The source this one was forked from, or null for an opened file.</summary>
+    public SourceSession? Parent { get; }
+
+    /// <summary>The fork behind this source, or null for an opened file (which pokes can never change).</summary>
+    public Branch? Branch { get; }
+
+    public bool IsFork => Branch is not null;
+
+    /// <summary>The opened file at the root of this source's family of forks.</summary>
+    public SourceSession Root => Parent?.Root ?? this;
+
+    /// <summary>How the source is named in the views and the timeline.</summary>
+    public string Label { get; set; } = string.Empty;
+
+    /// <summary>The poke the app calls when an entity is dragged, if the module declares one.</summary>
+    public PokeInfo? DragPoke
+    {
+        get
+        {
+            foreach (PokeInfo p in Info.Pokes)
+            {
+                if (p.Role == PokeRole.DragToPoint && p.Params.Length == 2 && p.Params[0].Kind == ValueKind.Entity && p.Params[1].Kind == ValueKind.Vector)
+                {
+                    return p;
+                }
+            }
+
+            return null;
+        }
+    }
 
     public int KeyframeInterval { get; }
 
@@ -292,7 +325,7 @@ internal sealed class ShellModel
             throw new ControlException("bad_format", $"'{path}' opened, but its recording did not play: {ex.Message}");
         }
 
-        var session = new SourceSession(_sources.Count, full, used, source, history, options.KeyframeInterval);
+        var session = new SourceSession(_sources.Count, full, used, source, history, options.KeyframeInterval) { Label = name };
         _sources.Add(session);
         if (_sources.Count == 1)
         {
@@ -357,6 +390,149 @@ internal sealed class ShellModel
         }
 
         view.Touch();
+    }
+
+    /// <summary>The entity to highlight in a view: the selection, when the view shows the active source or a fork of the same file.</summary>
+    public EntityId HighlightFor(ViewState view) =>
+        ActiveSource < _sources.Count && view.Source < _sources.Count && ReferenceEquals(_sources[ActiveSource].Root, _sources[view.Source].Root)
+            ? Selected
+            : EntityId.None;
+
+    /// <summary>The most scene views the shell lays out.</summary>
+    public const int MaxViews = 4;
+
+    /// <summary>
+    /// Forks <paramref name="parent"/> at <paramref name="step"/>. The fork is a new source with its own recording and history, so it shows up in
+    /// every operation that takes a source. The shared time cursor moves to the fork step, and the fork becomes the active source.
+    /// </summary>
+    public SourceSession Fork(SourceSession parent, long step, bool addView)
+    {
+        if (step < 0 || step > parent.History.StepCount)
+        {
+            throw new ControlException("bad_args", $"Source {parent.Index} has {parent.History.StepCount} steps; fork at a step from 0 to {parent.History.StepCount}.");
+        }
+
+        Branch branch = parent.History.Fork(step);
+        int ordinal = 1 + _sources.Count(x => x.Branch is not null && ReferenceEquals(x.Root, parent.Root));
+        var fork = new SourceSession(_sources.Count, parent.Path, parent.Module, branch.History.Source, branch.History, parent.KeyframeInterval, parent, branch)
+        {
+            Label = $"{parent.Root.Label} fork {ordinal} @{step}",
+        };
+        _sources.Add(fork);
+        ActiveSource = fork.Index;
+        if (addView && _views.Count < MaxViews)
+        {
+            ViewState? like = _views.FirstOrDefault(v => v.Source == parent.Index) ?? _views.FirstOrDefault();
+            var view = new ViewState { Source = fork.Index, Kind = like?.Kind ?? ViewKind.Plane2D, Overlays = like?.Overlays ?? DefaultOverlays(fork.Info) };
+            if (like is not null)
+            {
+                view.Target = like.Target;
+                view.HalfHeight = like.HalfHeight;
+                view.Distance = like.Distance;
+                view.Yaw = like.Yaw;
+                view.Pitch = like.Pitch;
+                view.Wireframe = like.Wireframe;
+                view.Grid = like.Grid;
+            }
+
+            _views.Add(view);
+        }
+
+        AddLog(fork.Index, "fork", $"{fork.Label} from source {parent.Index}");
+        if (step != Step)
+        {
+            Seek(step);
+        }
+        else
+        {
+            Touch();
+        }
+
+        return fork;
+    }
+
+    /// <summary>
+    /// Queues a poke on a fork for its next step.
+    /// </summary>
+    /// <exception cref="ControlException"><c>read_only</c> for an opened file; <c>rejected</c> when the fork's cursor is not at its end; <c>bad_args</c> when the module refuses the poke.</exception>
+    public void Poke(SourceSession source, in PokeCall call)
+    {
+        Branch branch = RequireFork(source);
+        if (source.History.CurrentStep != source.History.StepCount)
+        {
+            throw new ControlException("rejected", $"Source {source.Index} is at step {source.History.CurrentStep} but its recording ends at {source.History.StepCount}; pokes apply at the end. Seek to step {source.History.StepCount} first.");
+        }
+
+        try
+        {
+            branch.Poke(call);
+        }
+        catch (ArgumentException ex)
+        {
+            throw new ControlException("bad_args", $"Poke '{call.Poke}' was refused: {ex.Message}");
+        }
+
+        Touch();
+    }
+
+    /// <summary>
+    /// Runs <paramref name="count"/> steps of a fork at the end of its recording; the first one carries the queued pokes. The shared cursor follows the fork.
+    /// </summary>
+    public void StepFork(SourceSession source, long count)
+    {
+        Branch branch = RequireFork(source);
+        for (long i = 0; i < count; i++)
+        {
+            branch.Step();
+        }
+
+        Seek(source.History.CurrentStep);
+    }
+
+    /// <summary>The source's recording takes pokes only on forks.</summary>
+    public static Branch RequireFork(SourceSession source) =>
+        source.Branch ?? throw new ControlException("read_only", $"Source {source.Index} ('{source.Label}') is an opened file and can't be poked; fork it first (the fork operation) and poke the fork.");
+
+    /// <summary>
+    /// Moves along the time axis by <paramref name="delta"/>. When the target is a fork with its cursor at the end of its recording, going forward runs
+    /// new steps in the fork (carrying queued pokes); otherwise it is a seek of every source.
+    /// </summary>
+    public void StepTime(long delta, SourceSession? target)
+    {
+        if (delta > 0 && target is { IsFork: true } fork && fork.History.CurrentStep == fork.History.StepCount)
+        {
+            StepFork(fork, delta);
+            return;
+        }
+
+        Seek(Math.Clamp(Step + delta, 0, MaxSteps));
+    }
+
+    /// <summary>Compares a fork with another source at a step. Both sources keep the cursors the shell gave them.</summary>
+    public Difference? Diff(SourceSession a, SourceSession b, long step, out ulong hashA, out ulong hashB)
+    {
+        long limit = Math.Min(a.History.StepCount, b.History.StepCount);
+        if (step < 0 || step > limit)
+        {
+            throw new ControlException("bad_args", $"Step {step} is outside both recordings: source {a.Index} has {a.History.StepCount} steps and source {b.Index} has {b.History.StepCount}; use 0 to {limit}.");
+        }
+
+        if (!ReferenceEquals(a.Module, b.Module))
+        {
+            throw new ControlException("bad_args", $"Sources {a.Index} and {b.Index} come from different modules ({a.Info.ModuleId}, {b.Info.ModuleId}) and can't be compared.");
+        }
+
+        try
+        {
+            Difference? found = a.History.Diff(b.History, step);
+            hashA = a.History.StateHash;
+            hashB = b.History.StateHash;
+            return found;
+        }
+        finally
+        {
+            Seek(Step);
+        }
     }
 
     /// <summary>Moves every source to <paramref name="step"/> (each clamped to its own length) and clears any axis view.</summary>

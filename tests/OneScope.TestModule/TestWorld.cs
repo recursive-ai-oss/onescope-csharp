@@ -465,7 +465,7 @@ public sealed class TestWorld : IScopeWorld
         bool is3D = _dims == 3;
         if (request.IsOn(0))
         {
-            var floor = new DrawStyle(StaticColor, 0, 0);
+            var floor = new DrawStyle(StaticColor, 0, 0, DrawFlags.None, TestModule.Floor);
             if (is3D)
             {
                 into.Box(new Vector3(Size / 2f, -10, Size / 2f), new Vector3(Size / 2f, 10, Size / 2f), Quaternion.Identity, floor);
@@ -490,7 +490,7 @@ public sealed class TestWorld : IScopeWorld
             Color32 color = _sleep[i] >= SleepAfter ? AsleepColor : AwakeColor;
             if (request.IsOn(0))
             {
-                var style = new DrawStyle(color, 0, 1);
+                var style = new DrawStyle(color, 0, 1, DrawFlags.None, new EntityId(TestModule.FirstBodyId + (ulong)i));
                 if (is3D)
                 {
                     switch (i % 4)

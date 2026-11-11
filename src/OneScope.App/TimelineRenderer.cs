@@ -37,6 +37,8 @@ internal static class TimelineRenderer
     private static readonly UiColor EventInk = new(90, 200, 230);
     private static readonly UiColor MarkerInk = new(240, 170, 70);
     private static readonly UiColor SeriesInk = new(120, 200, 120);
+    private static readonly UiColor BranchInk = new(110, 150, 255);
+    private static readonly UiColor DivergeInk = new(255, 90, 200);
 
     public static void Draw(Painter c, UiRect r, ShellModel shell)
     {
@@ -83,6 +85,32 @@ internal static class TimelineRenderer
 
         float rowsTop = y;
         y += TimelineLayout.RowHeight;
+
+        // Forks of this file hang below the time axis as branches: a line from the step they were forked at to where their recording ends,
+        // joined to the time axis by a connector, with a marker at the step where their input first differs from the original's.
+        foreach (SourceSession f in shell.Sources)
+        {
+            if (f.Branch is not { } branch || !ReferenceEquals(f.Root, s.Root) || y + TimelineLayout.RowHeight > r.Bottom - 2)
+            {
+                continue;
+            }
+
+            bool active = f.Index == shell.ActiveSource;
+            c.Text($"fork {f.Index} @{branch.ForkStep}", r.X + 8, y, 11, active ? BranchInk : Ink);
+            c.Fill(left, y, width, TimelineLayout.RowHeight - 2, Lane);
+            float x0 = TimelineLayout.XOf(r, branch.ForkStep, max);
+            float x1 = Math.Max(TimelineLayout.XOf(r, f.History.StepCount, max), x0 + 2);
+            c.Fill(x0, rowsTop + TimelineLayout.RowHeight - 3, 1, y - rowsTop - TimelineLayout.RowHeight + 8, BranchInk);
+            c.Fill(x0, y + 5, x1 - x0, 3, active ? BranchInk : Dim);
+            if (branch.DivergenceStep is long d)
+            {
+                float dx = TimelineLayout.XOf(r, d, max);
+                c.Fill(dx - 1, y, 3, TimelineLayout.RowHeight - 2, DivergeInk);
+                c.Fill(dx - 3, y + 3, 7, 7, DivergeInk);
+            }
+
+            y += TimelineLayout.RowHeight;
+        }
 
         // Other axes: the cells of the stage the view is at.
         foreach (AxisInfo a in s.Info.Axes)

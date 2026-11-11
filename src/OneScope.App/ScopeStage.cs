@@ -103,13 +103,13 @@ internal sealed class ScopeStage : Render2DStage, IFrameOverlay
                     cache.Key = key;
                 }
 
-                Plane2DRenderer.Draw(renderer.Ui, rect, view, cache);
+                Plane2DRenderer.Draw(renderer.Ui, rect, view, cache, _shell.HighlightFor(view));
             }
             else if (_space is not null)
             {
                 if (key != cache.Key || cache.Texture is null || moved)
                 {
-                    cache.Texture = _space.Render(renderer, cache, view, source, rect);
+                    cache.Texture = _space.Render(renderer, cache, view, source, rect, _shell.HighlightFor(view));
                     cache.Key = key;
                 }
 
@@ -151,7 +151,7 @@ internal sealed class ScopeStage : Render2DStage, IFrameOverlay
                 ViewState view = _shell.Views[i];
                 SourceSession source = _shell.Source(view.Source);
                 UiRect r = cache.Rect;
-                string title = $"{i}  {(view.Kind == ViewKind.Space3D ? "3D" : "2D")}  {source.Info.Name}";
+                string title = $"{i}  {(view.Kind == ViewKind.Space3D ? "3D" : "2D")}  {source.Label}";
                 canvas.Fill(r.X, r.Y, Math.Min(canvas.Measure(title, 11) + 14, r.Width), 18, new UiColor(0, 0, 0, 150));
                 canvas.Text(title, r.X + 6, r.Y + 3, 11, UiColor.White);
                 if (i == _shell.ActiveView)
