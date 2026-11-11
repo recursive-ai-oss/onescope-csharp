@@ -467,9 +467,58 @@ internal sealed partial class ShellModel
             view.Target = centre;
             float radius = Math.Max(size.Length() / 2, 1e-3f);
             view.Distance = radius / MathF.Sin(0.7f / 2) * 1.15f;
+            view.Distance = TightDistance(view, min, max);
         }
 
         view.Touch();
+    }
+
+    /// <summary>
+    /// The nearest orbit distance at which the eight corners of the box stay inside a 4:3 frame with a tenth of margin, found by bisection on the
+    /// view's own camera. The bounding sphere is the starting guess; a box that is wide in one direction fills the frame much better this way.
+    /// </summary>
+    private static float TightDistance(ViewState view, Vector3 min, Vector3 max)
+    {
+        float far = view.Distance * 2;
+        var frame = new OneGame.UI.Rect(0, 0, 400, 300);
+        bool Fits(float distance)
+        {
+            view.Distance = distance;
+            for (int i = 0; i < 8; i++)
+            {
+                var corner = new Vector3((i & 1) == 0 ? min.X : max.X, (i & 2) == 0 ? min.Y : max.Y, (i & 4) == 0 ? min.Z : max.Z);
+                Vector2 p = ViewPicking.ToScreen(view, frame, corner);
+                if (!(p.X >= 40 && p.X <= 360 && p.Y >= 30 && p.Y <= 270))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        float start = view.Distance;
+        if (!Fits(far))
+        {
+            return start;
+        }
+
+        float lo = start * 0.1f;
+        float hi = far;
+        for (int i = 0; i < 24; i++)
+        {
+            float mid = (lo + hi) / 2;
+            if (Fits(mid))
+            {
+                hi = mid;
+            }
+            else
+            {
+                lo = mid;
+            }
+        }
+
+        return hi;
     }
 
     /// <summary>The entity to highlight in a view: the selection, when the view shows the active source or a fork of the same file.</summary>

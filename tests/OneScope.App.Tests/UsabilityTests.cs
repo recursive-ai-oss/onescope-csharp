@@ -279,6 +279,41 @@ public sealed class UsabilityTests
         }
     }
 
+    private static (string Sha, string Renderer, string File) CaptureFramed(string file, bool bundled)
+    {
+        // No camera is set: what the view got when the source opened is what is captured.
+        using Harness h = new Harness(960, 540, bundled).Open(file);
+        h.Call("seek", """{"step":30}""");
+        JsonElement r = h.Call("capture_frame", """{"path":"framing.png","view":0,"size":"480x360"}""");
+        string copy = Path.Combine(Path.GetTempPath(), "onescope-golden-" + Guid.NewGuid().ToString("N") + ".png");
+        File.Copy(r.GetProperty("path").GetString()!, copy);
+        return (r.GetProperty("sha256").GetString()!, r.GetProperty("renderer").GetString()!, copy);
+    }
+
+    [Theory]
+    [InlineData("framing-test-3d", "test-10000.ostm", false)]
+    [InlineData("framing-physics-3d", "physics-3d.oppr", true)]
+    public void DefaultFramedViewsAreByteIdenticalAcrossThreeRunsAndMatchTheGolden(string golden, string file, bool bundled)
+    {
+        var runs = new List<(string Sha, string Renderer, string File)>();
+        try
+        {
+            for (int i = 0; i < 3; i++)
+            {
+                runs.Add(CaptureFramed(file, bundled));
+            }
+
+            GoldenTests.Check(golden, runs);
+        }
+        finally
+        {
+            foreach (var r in runs)
+            {
+                File.Delete(r.File);
+            }
+        }
+    }
+
     /// <summary>The share of the view's smaller side the drawn bodies cover, and whether all of them are inside it.</summary>
     private static (double Fill, bool AllInside) BodyFill(Harness h, int view, Func<DrawItem, bool> isBody)
     {
