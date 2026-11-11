@@ -95,8 +95,8 @@ jobs:
       - name: Software Vulkan (the app's tests draw offscreen on it)
         if: env.KIND == 'tool'
         run: |
-          sudo apt-get update
-          sudo apt-get install -y mesa-vulkan-drivers libvulkan1
+          sudo apt-get -o Acquire::Retries=5 update
+          sudo apt-get -o Acquire::Retries=5 install -y mesa-vulkan-drivers libvulkan1
           echo "VK_DRIVER_FILES=/usr/share/vulkan/icd.d/lvp_icd.json" >> "$GITHUB_ENV"
 
       # A tag that does not build and pass its tests never publishes.

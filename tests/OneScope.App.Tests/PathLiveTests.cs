@@ -21,6 +21,8 @@ internal sealed class CrowdHostThread : IDisposable
     private readonly int _steps;
     private readonly int _delayMs;
     private volatile bool _stop;
+    private readonly ManualResetEventSlim _held = new(false);
+    private readonly ManualResetEventSlim _release = new(false);
     private ulong _rng = 9;
 
     public CrowdHostThread(int steps, string? dir, int delayMs = 2)
@@ -42,15 +44,37 @@ internal sealed class CrowdHostThread : IDisposable
         if (dir is not null)
         {
             string libraryVersion = typeof(Crowd).Assembly.GetName().Version?.ToString(3) ?? "1";
-            _probe = ScopeProbe.Attach(new ProbeInfo("onepath", libraryVersion, 1), new Snapshots(_recorder), new ProbeOptions { Directory = dir });
+            _probe = ScopeProbe.Attach(new ProbeInfo("onepath", libraryVersion, 1), new Snapshots(this, _recorder), new ProbeOptions { Directory = dir });
             _recorder.Record = _probe.Record;
         }
 
         _thread = new Thread(Run) { IsBackground = true };
     }
 
-    /// <summary>Host world hash by the crowd's step count.</summary>
+    /// <summary>Host world hash by the crowd's step count, taken after the step and before the commands the host gives next.</summary>
     public Dictionary<long, ulong> Hashes { get; } = [];
+
+    /// <summary>
+    /// The crowd's step count and hash at the moment a viewer's snapshot was taken, or null before one was. A snapshot is taken at the first
+    /// recorded change after the viewer asks, which can be a command in the middle of the commands given before a step, so its state is
+    /// the one the viewer starts from and need not be the state in <see cref="Hashes"/> for that step.
+    /// </summary>
+    public (long Step, ulong Hash)? Snapshot { get; private set; }
+
+    /// <summary>Holds the host before it gives the commands of this step (and steps it) until <see cref="Release"/>; -1 for never.</summary>
+    public int HoldBeforeStep { get; set; } = -1;
+
+    /// <summary>True while the host waits at <see cref="HoldBeforeStep"/>.</summary>
+    public bool Holding => _held.IsSet;
+
+    /// <summary>Lets a host that is holding go on.</summary>
+    public void Release() => _release.Set();
+
+    /// <summary>
+    /// The state a viewer should have at host step <paramref name="step"/>: the host's hash after that step, except at the step the viewer attached
+    /// at, where it is the state at the moment of the snapshot (which may already have commands for the next step in it).
+    /// </summary>
+    public ulong ExpectedAt(long step) => Snapshot is { } snap && snap.Step == step ? snap.Hash : Hashes[step];
 
     public string SocketPath => _probe!.SocketPath!;
 
@@ -76,6 +100,14 @@ internal sealed class CrowdHostThread : IDisposable
 
         for (int i = 0; i < _steps && !_stop; i++)
         {
+            if (i == HoldBeforeStep)
+            {
+                _held.Set();
+                while (!_release.Wait(10) && !_stop)
+                {
+                }
+            }
+
             if (i % 60 == 30)
             {
                 for (int k = 0; k < 5; k++)
@@ -114,6 +146,7 @@ internal sealed class CrowdHostThread : IDisposable
     public void Dispose()
     {
         _stop = true;
+        _release.Set();
         if (_thread.IsAlive)
         {
             _thread.Join();
@@ -122,9 +155,13 @@ internal sealed class CrowdHostThread : IDisposable
         _probe?.Dispose();
     }
 
-    private sealed class Snapshots(CrowdRecorder recorder) : ISnapshotSource
+    private sealed class Snapshots(CrowdHostThread host, CrowdRecorder recorder) : ISnapshotSource
     {
-        public void WriteSnapshot(System.Buffers.IBufferWriter<byte> writer) => recorder.WriteSnapshot(writer);
+        public void WriteSnapshot(System.Buffers.IBufferWriter<byte> writer)
+        {
+            recorder.WriteSnapshot(writer);
+            host.Snapshot = (recorder.Crowd.StepCount, recorder.Crowd.StateHash());
+        }
     }
 }
 
@@ -134,21 +171,13 @@ public sealed class PathLiveTests
 {
     private static string Hex(ulong v) => v.ToString("x16", CultureInfo.InvariantCulture);
 
-    [Theory]
-    [InlineData(1)]
-    [InlineData(2)]
-    [InlineData(3)]
-    [InlineData(4)]
-    [InlineData(5)]
-    [InlineData(6)]
-    [InlineData(7)]
-    [InlineData(8)]
-    public async Task AttachingMidRunGivesTheHostsHashesAtTheHostsStepNumbersAndForksFromTheLiveHistory(int repeat)
+    [Fact]
+    public async Task AttachingMidRunGivesTheHostsHashesAtTheHostsStepNumbersAndForksFromTheLiveHistory()
     {
         string dir = LiveAndSessionTests.NewDir();
         try
         {
-            using var host = new CrowdHostThread(400, dir, int.Parse(Environment.GetEnvironmentVariable("CROWD_DELAY") ?? "2"));
+            using var host = new CrowdHostThread(400, dir);
             using Harness h = new Harness(bundled: true);
             host.Start();
             await Task.Delay(300, TestContext.Current.CancellationToken);
@@ -156,7 +185,6 @@ public sealed class PathLiveTests
             long start = attached.GetProperty("startStep").GetInt64();
             Assert.True(start > 1, "the attach should land mid-run");
             Assert.Equal("onepath", attached.GetProperty("module").GetString());
-            Assert.InRange(repeat, 1, 8);
             await Task.Run(host.Join, TestContext.Current.CancellationToken);
             h.Call("sources");
             await Task.Delay(300, TestContext.Current.CancellationToken);
@@ -169,9 +197,9 @@ public sealed class PathLiveTests
             {
                 h.Call("seek", $$"""{"step":{{s}}}""");
                 string viewer = h.Call("sources").GetProperty("sources")[0].GetProperty("hash").GetString()!;
-                if (Hex(host.Hashes[s]) != viewer)
+                if (Hex(host.ExpectedAt(s)) != viewer)
                 {
-                    mismatches.Add($"step {s}: host {Hex(host.Hashes[s])} viewer {viewer} (host hash at s-1 {(host.Hashes.TryGetValue(s - 1, out ulong p1) ? Hex(p1) : "-")}, s+1 {(host.Hashes.TryGetValue(s + 1, out ulong n1) ? Hex(n1) : "-")})");
+                    mismatches.Add($"step {s}: host {Hex(host.ExpectedAt(s))} viewer {viewer} (host hash at s-1 {(host.Hashes.TryGetValue(s - 1, out ulong p1) ? Hex(p1) : "-")}, s+1 {(host.Hashes.TryGetValue(s + 1, out ulong n1) ? Hex(n1) : "-")})");
                 }
 
                 compared++;
@@ -183,7 +211,7 @@ public sealed class PathLiveTests
             foreach (long s in new[] { end, end - 64, end - 1, start, end - 100, start + 1 })
             {
                 h.Call("seek", $$"""{"step":{{s}}}""");
-                Assert.Equal(Hex(host.Hashes[s]), h.Call("sources").GetProperty("sources")[0].GetProperty("hash").GetString());
+                Assert.Equal(Hex(host.ExpectedAt(s)), h.Call("sources").GetProperty("sources")[0].GetProperty("hash").GetString());
             }
 
             // A fork from the middle of the live history reproduces itself from its saved replay.
@@ -208,6 +236,54 @@ public sealed class PathLiveTests
             }
 
             Harness.Report($"live crowd: attached at host step {start}, {compared} steps ({start}..{end}) equal the host's hashes, plus 6 backward landings; fork at {mid} poked, saved and reopened: {forkHashes.Count} hashes reproduced");
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// A viewer that asks while the host is between a step and the next one gets its snapshot at the first command the host gives (the host
+    /// gives commands before some steps). Its first state is then the host's state after that command, not the state the host had after the
+    /// step, and every later state agrees with the host's. The host is held at a step that has commands so the attach lands there every time.
+    /// </summary>
+    [Fact]
+    public async Task AttachingJustBeforeTheCommandsOfAStepStartsFromTheStateAfterTheFirstCommandAndAgreesFromThereOn()
+    {
+        const int HoldAt = 30; // the host gives five commands before step 30 (i % 60 == 30)
+        string dir = LiveAndSessionTests.NewDir();
+        try
+        {
+            using var host = new CrowdHostThread(120, dir) { HoldBeforeStep = HoldAt };
+            using Harness h = new Harness(bundled: true);
+            host.Start();
+            LiveAndSessionTests.WaitFor(() => host.Holding, "the host to reach the hold");
+            Task<JsonElement> attach = Task.Run(() => h.Call("attach", JsonSerializer.Serialize(new { socket = host.SocketPath, wait = 10000 })), TestContext.Current.CancellationToken);
+            await Task.Delay(1000, TestContext.Current.CancellationToken); // the probe has the viewer waiting for the host's next recorded change
+            host.Release();
+            JsonElement attached = await attach;
+            long start = attached.GetProperty("startStep").GetInt64();
+            await Task.Run(host.Join, TestContext.Current.CancellationToken);
+            await Task.Delay(300, TestContext.Current.CancellationToken);
+            Assert.Equal(HoldAt, start);
+            (long snapStep, ulong snapHash) = host.Snapshot!.Value;
+            Assert.Equal(HoldAt, snapStep);
+
+            // The state the viewer starts from is the host's state when the snapshot was taken, which already has the first command in it...
+            h.Call("seek", $$"""{"step":{{start}}}""");
+            string viewerAtStart = h.Call("sources").GetProperty("sources")[0].GetProperty("hash").GetString()!;
+            Assert.Equal(Hex(snapHash), viewerAtStart);
+            // ...so it is not the state the host had after step 30 and before its commands.
+            Assert.NotEqual(Hex(host.Hashes[start]), viewerAtStart);
+            Harness.Report($"live crowd attach before the commands of step {start}: viewer starts at {viewerAtStart} (host after the first command {Hex(snapHash)}), the host after the step and before its commands had {Hex(host.Hashes[start])}");
+
+            // From the next step on, every state is the host's.
+            for (long s = start + 1; s <= 120; s++)
+            {
+                h.Call("seek", $$"""{"step":{{s}}}""");
+                Assert.Equal(Hex(host.Hashes[s]), h.Call("sources").GetProperty("sources")[0].GetProperty("hash").GetString());
+            }
         }
         finally
         {

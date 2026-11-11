@@ -30,7 +30,7 @@ internal sealed class PhysicsHostThread : IDisposable
             }
 
             var feed = new LiveFeedStream(world);
-            _probe = Start(feed, dir);
+            _probe = Start(feed, dir, () => (world.StepCount, world.ComputeHash()));
             _thread = new Thread(() => Run(steps, i =>
             {
                 if (i % 40 == 10)
@@ -49,7 +49,7 @@ internal sealed class PhysicsHostThread : IDisposable
             }
 
             var feed = new LiveFeedStream(world);
-            _probe = Start(feed, dir);
+            _probe = Start(feed, dir, () => (world.StepCount, world.ComputeHash()));
             _thread = new Thread(() => Run(steps, i =>
             {
                 if (i % 40 == 10)
@@ -65,9 +65,19 @@ internal sealed class PhysicsHostThread : IDisposable
 
     public string SocketPath => _probe.SocketPath!;
 
-    private static ScopeProbe Start(LiveFeedStream feed, string dir)
+    /// <summary>
+    /// The host's step count and hash when a viewer's snapshot was taken, or null before one was. The host adds bodies before some steps, and a
+    /// snapshot is taken at the first recorded change after the viewer asks, so it can already hold that body: the state the viewer starts from is
+    /// then not the one in <see cref="Hashes"/> for that step.
+    /// </summary>
+    public (long Step, ulong Hash)? Snapshot { get; private set; }
+
+    /// <summary>The state a viewer should have at host step <paramref name="step"/>; see <see cref="Snapshot"/>.</summary>
+    public ulong ExpectedAt(long step) => Snapshot is { } snap && snap.Step == step ? snap.Hash : Hashes[step];
+
+    private ScopeProbe Start(LiveFeedStream feed, string dir, Func<(long Count, ulong Hash)> state)
     {
-        ScopeProbe p = ScopeProbe.Attach(new ProbeInfo(new OnePhysicsModule().Id, "1.0.0", 2), new FeedSnapshots(feed), new ProbeOptions { Directory = dir });
+        ScopeProbe p = ScopeProbe.Attach(new ProbeInfo(new OnePhysicsModule().Id, "1.0.0", 2), new FeedSnapshots(this, feed, state), new ProbeOptions { Directory = dir });
         feed.Record = p.Record;
         return p;
     }
@@ -105,9 +115,14 @@ internal sealed class PhysicsHostThread : IDisposable
         _probe.Dispose();
     }
 
-    private sealed class FeedSnapshots(LiveFeedStream feed) : ISnapshotSource
+    private sealed class FeedSnapshots(PhysicsHostThread host, LiveFeedStream feed, Func<(long Count, ulong Hash)> state) : ISnapshotSource
     {
-        public void WriteSnapshot(System.Buffers.IBufferWriter<byte> writer) => feed.WriteSnapshot(writer);
+        public void WriteSnapshot(System.Buffers.IBufferWriter<byte> writer)
+        {
+            feed.WriteSnapshot(writer);
+            (long count, ulong hash) = state();
+            host.Snapshot = (count, hash);
+        }
     }
 }
 
@@ -145,7 +160,7 @@ public sealed class PhysicsLiveTests
             {
                 h.Call("seek", $$"""{"step":{{s}}}""");
                 string shell = h.Call("sources").GetProperty("sources")[0].GetProperty("hash").GetString()!;
-                Assert.Equal(host.Hashes[s].ToString("x16", System.Globalization.CultureInfo.InvariantCulture), shell);
+                Assert.Equal(host.ExpectedAt(s).ToString("x16", System.Globalization.CultureInfo.InvariantCulture), shell);
                 compared++;
             }
 
