@@ -79,19 +79,21 @@ internal static class ModuleLoader
                     continue;
                 }
 
-                ConstructorInfo? ctor = type.GetConstructor(Type.EmptyTypes);
+                // A constructor whose parameters all have defaults counts as parameterless: a module may take options with defaults.
+                ConstructorInfo? ctor = type.GetConstructors().FirstOrDefault(c => c.GetParameters().All(p => p.IsOptional && p.HasDefaultValue));
                 if (ctor is null)
                 {
                     continue;
                 }
 
-                var module = (IScopeModule)ctor.Invoke(null);
+                object?[] args = ctor.GetParameters().Select(p => p.DefaultValue).ToArray();
+                var module = (IScopeModule)ctor.Invoke(args);
                 var loaded = new LoadedModule(module, full, context);
                 loaded.Track();
                 return loaded;
             }
 
-            throw new ControlException("bad_module", $"Module assembly '{path}' has no public class with a parameterless constructor that implements IScopeModule.");
+            throw new ControlException("bad_module", $"Module assembly '{path}' has no public class that implements IScopeModule and can be created without arguments (a constructor whose parameters all have defaults is fine).");
         }
         catch (BadImageFormatException ex)
         {

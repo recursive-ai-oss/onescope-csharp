@@ -39,18 +39,24 @@ internal sealed class PokePanel
     /// <summary>Builds the panel's element tree once; the rows follow the active fork.</summary>
     public Element Build()
     {
-        Element title = Ui.Label("Pokes").Class("panel-title").Padding(Length.Px(4), Length.Px(8));
+        // The title is a button: collapsed, the panel is one line and the inspector below gets the room. Open, it scrolls when the column is short.
+        Element title = UiKit.Button(() => Collapsed ? "Pokes  [+]" : "Pokes  [-]", () => Collapsed = !Collapsed, "poke/collapse", ButtonKind.Flat)
+            .Padding(Length.Px(2), Length.Px(8)).Class("panel-title");
         Element choices = Ui.Row().Wrap().Gap(Length.Px(3)).BindChildren(Rows, ChoiceButton);
         Element fields = Ui.Column().Gap(Length.Px(3)).BindChildren(Params, BuildField);
         Element footer = Ui.Row(
                 UiKit.Button("Apply", () => _run(() => Apply(Current())), "poke/apply"),
-                Ui.Spacer(),
                 UiKit.Toggle("Step after poke", () => StepAfter, on => StepAfter = on, "poke/step-after"),
                 UiKit.Button("Step", () => _run(StepActive), "poke/step"))
-            .Align(Align.Center).Gap(Length.Px(6));
-        return Ui.Column(title, Ui.Column(choices, fields, footer).Padding(Length.Px(6)).Gap(Length.Px(6)))
-            .Class("panel").Named("pokes-panel").BindVisible(() => Visible).Shrink(0);
+            .Wrap().Align(Align.Center).Gap(Length.Px(6));
+        Element body = Ui.Column(choices, fields, footer).Padding(Length.Px(6)).Gap(Length.Px(6)).Shrink(1).Style(st => st.MinHeight(Length.Px(0)))
+            .Overflow(OverflowMode.Auto).Named("pokes-body").BindVisible(() => !Collapsed);
+        return Ui.Column(title, body)
+            .Class("panel").Class("tight").Named("pokes-panel").BindVisible(() => Visible).Shrink(1).Style(st => st.MinHeight(Length.Px(30)));
     }
+
+    /// <summary>Whether the panel shows only its title.</summary>
+    public bool Collapsed { get; set; }
 
     private IReadOnlyList<PokeRow> Rows()
     {

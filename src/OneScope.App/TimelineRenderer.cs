@@ -45,6 +45,8 @@ internal static class TimelineRenderer
     private static readonly UiColor SeriesInk = new(120, 200, 120);
     private static readonly UiColor BranchInk = new(110, 150, 255);
     private static readonly UiColor DivergeInk = new(255, 90, 200);
+    private static readonly UiColor AgreeInk = new(52, 120, 76);
+    private static readonly UiColor DisagreeInk = new(232, 72, 72);
 
     public static void Draw(Painter c, UiRect r, ShellModel shell)
     {
@@ -117,6 +119,35 @@ internal static class TimelineRenderer
                 float dx = TimelineLayout.XOf(r, d, max);
                 c.Fill(dx - 1, y, 3, TimelineLayout.RowHeight - 2, DivergeInk);
                 c.Fill(dx - 3, y + 3, 7, 7, DivergeInk);
+            }
+
+            y += TimelineLayout.RowHeight;
+        }
+
+        // The compare pair's agreement: green where the two worlds are equal (by hash, or by the entities they share), red where they differ.
+        if (shell.EffectivePair is { } pair && y + TimelineLayout.RowHeight <= r.Bottom - 2)
+        {
+            Agreement ag = pair.Agreement;
+            c.Text($"agree {pair.First.Index} vs {pair.Second.Index}", r.X + 8, y, 11, ag.First is null ? Ink : DisagreeInk);
+            c.Fill(left, y, width, TimelineLayout.RowHeight - 2, Lane);
+            if (ag.To >= ag.From)
+            {
+                float a0 = TimelineLayout.XOf(r, ag.From, max);
+                float a1 = Math.Max(TimelineLayout.XOf(r, ag.ScannedThrough, max), a0 + 1);
+                c.Fill(a0, y + 3, a1 - a0, TimelineLayout.RowHeight - 8, AgreeInk);
+                foreach ((long from, long to) in ag.Runs)
+                {
+                    float x0 = TimelineLayout.XOf(r, from, max);
+                    float x1 = Math.Max(TimelineLayout.XOf(r, to + 1, max), x0 + 2);
+                    c.Fill(x0, y + 1, x1 - x0, TimelineLayout.RowHeight - 4, DisagreeInk);
+                }
+
+                if (ag.First is long first)
+                {
+                    float fx = TimelineLayout.XOf(r, first, max);
+                    c.Fill(fx - 1, y, 3, TimelineLayout.RowHeight - 2, DivergeInk);
+                    c.Fill(fx - 3, y + 3, 7, 7, DivergeInk);
+                }
             }
 
             y += TimelineLayout.RowHeight;

@@ -201,7 +201,7 @@ public sealed class TestWorld : IScopeWorld
                     {
                         if (_alive[i] && _sleep[i] < SleepAfter)
                         {
-                            _v[i * 3 + 1] += _gravity;
+                            _v[i * 3 + 1] += _gravity - ExtraPull(reached);
                         }
                     }
 
@@ -226,6 +226,22 @@ public sealed class TestWorld : IScopeWorld
             }
         }
 
+    }
+
+    /// <summary>
+    /// The one rule the second build of this module changes, so two builds of "one library" can be compared: with the
+    /// OSTM_RULE_B symbol, step <see cref="RuleStep"/> pulls awake bodies one unit harder. The default build never does.
+    /// </summary>
+    public const long RuleStep = 300;
+
+    private static int ExtraPull(long reached)
+    {
+#if OSTM_RULE_B
+        return reached == RuleStep ? 1 : 0;
+#else
+        _ = reached;
+        return 0;
+#endif
     }
 
     /// <summary>The handed-over body leaves the sending world, or arrives in the receiving one, at the transfer step.</summary>

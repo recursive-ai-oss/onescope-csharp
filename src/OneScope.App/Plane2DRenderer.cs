@@ -120,7 +120,7 @@ internal static partial class Plane2DRenderer
     }
 
     private static Frame MakeFrame(ViewState view, OneGame.UI.Rect rect) =>
-        new(new Vector2(rect.X + (rect.Width / 2), rect.Y + (rect.Height / 2)), new Vector2(view.Target.X, view.Target.Y), rect.Height / (2 * Math.Max(view.HalfHeight, 1e-9f)));
+        new(new Vector2(rect.X + (rect.Width / 2), rect.Y + (rect.Height / 2)), new Vector2(view.Target.X, view.Target.Y), Math.Min(rect.Width, rect.Height) / (2 * Math.Max(view.HalfHeight, 1e-9f)));
 
     private static void SortByLayer(ViewCache cache)
     {

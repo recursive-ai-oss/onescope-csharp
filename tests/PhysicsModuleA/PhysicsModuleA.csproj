@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Builds one published version of the physics module, with its library, into a folder the tests load it from. -->
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="RecursiveAI.OnePhysics.Scope" VersionOverride="1.1.0-preview.1" />
+    <PackageReference Include="RecursiveAI.OnePhysics" VersionOverride="1.0.0" />
+  </ItemGroup>
+</Project>

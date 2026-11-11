@@ -328,6 +328,7 @@ internal sealed partial class ShellModel
 
         CloseLive();
         _sources.Clear();
+        ClearPair();
         _views.Clear();
         _log.Clear();
         Selected = EntityId.None;

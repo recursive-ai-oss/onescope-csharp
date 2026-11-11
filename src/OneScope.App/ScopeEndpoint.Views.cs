@@ -332,6 +332,7 @@ internal sealed partial class ScopeEndpoint
         p.Inspector = a.Bool("inspector") ?? p.Inspector;
         p.Timeline = a.Bool("timeline") ?? p.Timeline;
         p.Log = a.Bool("log") ?? p.Log;
+        p.Compare = a.Bool("compare") ?? p.Compare;
         _shell.Touch();
         return JsonOut.Build(w =>
         {
@@ -340,6 +341,7 @@ internal sealed partial class ScopeEndpoint
             w.WriteBoolean("inspector", p.Inspector);
             w.WriteBoolean("timeline", p.Timeline);
             w.WriteBoolean("log", p.Log);
+            w.WriteBoolean("compare", p.Compare);
             w.WriteEndObject();
         });
     }

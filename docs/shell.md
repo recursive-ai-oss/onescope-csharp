@@ -34,7 +34,7 @@ Hashes are 16 lowercase hex digits. Entity ids are the module's unsigned 64-bit 
 
 | Operation | Arguments | Result |
 |---|---|---|
-| `open` | `path`, `module`?, `moduleAssembly`?, `keyframeInterval`?, `scan`? | the new source: `source`, `name`, `path`, `module`, `dimensions`, `unit {name, metres}`, `steps`, `axes`, `overlays`, `tracks`, `pokes`, `step`, `hash`, `keyframeInterval`, `scannedThrough`, `views` |
+| `open` | `path`, `module`?, `moduleAssembly`?, `keyframeInterval`?, `scan`? (a module named by `moduleAssembly` opens this file even when a bundled one would also accept it; the source then reports `moduleAssembly`) | the new source: `source`, `name`, `path`, `module`, `dimensions`, `unit {name, metres}`, `steps`, `axes`, `overlays`, `tracks`, `pokes`, `step`, `hash`, `keyframeInterval`, `scannedThrough`, `views` |
 | `sources` | | `step`, `start`, `steps`, `speed`, `sources[]` (the `open` fields plus `keyframes`, `keyframeBytes`, `findings`, and for a live source `live {state: streaming|ended|disconnected|failed|capped|closed, endedBecause?, follow, hostPid, library, format, firstStep, newestStep, recordBytes, capBytes}`, and when the file recorded hashes `recordedHashes {through, matches: all|so far|no, firstMismatch?}`), and `attaching[]`: attaches still connecting or failed (`attach`, `state`, `target`, `startFrame`, `frame`, and for a failure `errorCode`, `error`) |
 | `attach` | none: list. `pid` or `socket` to connect; `dir`?, `keyframeInterval`?, `moduleAssembly`?, `wait`? (ms the call may block, default 100), `timeout`? (ms the connection may take, default 30000), `capBytes`? (received record bytes kept, default 268435456) | list: `probes[] {pid, socket, module, library, format, moduleLoaded}`, `removedStale[]`, `unreadable[]`. Connect: the new source as for `open`, plus `live`, when it is ready within `wait`; otherwise `{attach, state: "connecting", target, startFrame, frame}` and the source appears when the host has taken its snapshot. Errors within `wait`: `not_found`, `timeout`, `bad_stream`, `no_module`, `bad_format`; later ones are listed under `sources.attaching` |
 | `follow` | `source`? (default the first live one), `on`? | `source`, `live`, `step`; on moves the cursor to the newest step |
@@ -56,7 +56,8 @@ Hashes are 16 lowercase hex digits. Entity ids are the module's unsigned 64-bit 
 | `project` | `entity`, `view`? or `source`? | `view`, `entity`, `x`, `y` (window pixels), `onScreen`, `world` |
 | `view` | nothing to list; `add` (`2d`/`3d`), or `index` with `remove`, `source`, `target`, `halfHeight` (2D), `distance`, `yaw`, `pitch` (3D), `frame` (the moving bodies; see Framing), `frameSelection` (the selected entity), `wireframe`, `grid`, `active` | `active`, `views[]` |
 | `timeline` | `fit`? (`all` or `fork`, with `source`?), `from`? and `to`?, `zoom`? (factor above 1 shows fewer steps) with `center`?, `pan`? (steps); nothing reports | `from`, `to`, `zoomed`, `axisFrom`, `axisTo`, `step`. View only: no world moves |
-| `layout` | `entities`?, `inspector`?, `timeline`?, `log`? (booleans) | the panel states |
+| `layout` | `entities`?, `inspector`?, `timeline`?, `log`?, `compare`? (booleans) | the panel states |
+| `compare` | `source`?, `other`?, `kind`? (`fork`, `versions`, `shared`), `map`? (`identity`, `links`), `offset`?, `step`?, `goto`? (`first`, `next`, `previous`, `last`), `limit`? (1 to 1000, default 50) | the pair, the agreement along the shared steps, and the differing fields at a step: see Compare |
 | `capture_frame` | `path`? (inside the output folder), `size`? (`720p`, `1080p`, `WxH`), `scale`?, `view`? (that view alone, full size), `presented`? | `path`, `width`, `height`, `scale`, `sha256`, `renderer`, `target`, `step`, `hashes[]`; over MCP the PNG travels as image content |
 | `capture_sequence` | `dir`, `count` (1 to 3600), `stride`? (default 1), `axis`?, `source`?, `size`?, `scale`?, `view`? | `dir`, `frames`, `ended`, `manifest`, `renderer`, `step`; `manifest.json` lists each frame's `step`, `position`, `hash` and `sha256` |
 
@@ -98,6 +99,9 @@ malformed or hostile session file, a missing module, or a referenced file that c
 
 ## The window
 
+The shell is laid out for windows from 960x540: the scene views take what the timeline and the log leave, and those two give up height first (down to a floor). The toolbar buttons are short,
+the **Pokes** panel can be collapsed to its title (**[-]**) and scrolls when the column is short, and a 2D view shows at least its framed area in both directions, so a narrow view is not cut.
+
 The toolbar has the transport, Fork, **Frame** and **Frame sel.**, and the overlay toggles. Beside the inspector, a **Pokes** panel appears when the active source
 is a fork: one button per poke the module declares, then a field for each of its typed parameters (an entity takes an id or, when empty, the selected entity; a
 vector takes `x,y,z` and starts at the centre of the active view; integers, numbers, text and booleans as typed), **Apply** and **Step**. With *Step after poke* on, Apply
@@ -125,6 +129,30 @@ the timeline are painted over everything. Forks hang below the time axis as bran
 joined to the time axis, with a marker at the divergence step. Captures of the same state are byte-identical run to run on the same renderer; the committed goldens
 in `tests/OneScope.App.Tests/goldens` come from lavapipe (`VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json`). Triangles and meshes in a 2D view
 are filled by one-pixel strips because the canvas has rectangles and rounded rectangles only.
+
+## Compare
+
+`compare` looks at two sources at once and makes them the **compare pair**: the **Compare** panel, the *agree* row under the timeline's time axis and the outline of the
+selected entity in both sources' views follow it. Three kinds of pair, chosen from the sources (or `kind`):
+
+- `fork`: a fork and its original (the default for a fork), or any two sources on one module copy. The first difference is the module's own finder's.
+- `versions`: two copies of one module id, each in its own load context. Open one file twice, each time with `moduleAssembly` naming a folder's module dll; the shell pairs
+  the two sources by itself. The worlds are compared through their inspector rows, since a module can't be handed a world made by another copy of itself. If the two copies
+  number the replay differently (one starts at step 0, the other at 1) and play the same number of steps, the pair aligns their starts: `offset` is how far the second source's
+  step numbers run ahead of the first's, steps are reported in the first source's numbering, and a row that only shows each world's own step number is not a difference.
+  Pass `offset` to set it. The shared cursor still puts both sources at one step number.
+- `shared` (`kind:"shared"`): only the entities both sides hold (a partial world against a whole one), paired by `map` (`identity`, or the declared `links`); roots are left out.
+  Entities held by one side are counted (`onlySource`, `onlyOther`), not listed.
+
+The result: `kind`, `step` and `otherStep`, `offset`, `equal` and the two world hashes at the step, `divergence` (the first step whose input differs; forks), and
+`agreement {basis, scannedThrough, complete, divergentSteps, firstDivergent, lastDivergent, nextDivergent, previousDivergent, divergentHere, runs, runsTruncated}`: the pair is played
+privately from the start of the shared steps (up to 100,000; 10,000 for `shared`) and a step *agrees* when the world hashes are equal (for `shared`, when the shared entities are).
+`difference` is the first differing entity and field; `rows[] {entity, otherEntity?, field, source, other}` lists every differing inspector row at the step, at most `limit`,
+with the full number in `rowCount` (`truncated` says when the list is cut). With `goto`, the shared cursor first moves to the first, last, next or previous divergent step
+(`moved` says whether there was one). `diff` between two copies of one module id works as well, by the same inspector rows.
+
+In the window, the **Compare** button shows a panel with the pair, whether the worlds agree at the cursor, **|< First / < Prev / Next > / Last >|**, and the differing fields;
+choosing a row selects that entity. The panel shows by itself for a fork, and when `compare` is called or one file is opened through two module copies.
 
 ## Bundled modules
 

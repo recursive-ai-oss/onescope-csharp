@@ -13,20 +13,23 @@ internal sealed partial class ScopeEndpoint
 {
     private string Open(Args a)
     {
-        string? assembly = a.String("moduleAssembly");
-        if (assembly is not null)
-        {
-            LoadedModule loaded = ModuleLoader.Load(assembly);
-            _loaded.Add(loaded);
-            _shell.AddModule(loaded.Module);
-        }
-
         if (a.RequiredString("path").EndsWith(".oscope", StringComparison.OrdinalIgnoreCase))
         {
             return SessionOpen(a);
         }
 
-        SourceSession s = _shell.Open(a.RequiredString("path"), a.String("module"), a.Int("keyframeInterval") ?? 0, a.Bool("scan"));
+        // A module named here is the one that opens this file, even when another loaded module would also accept it:
+        // that is how one file is played through two versions of a library, each in its own load context.
+        LoadedModule? from = null;
+        string? assembly = a.String("moduleAssembly");
+        if (assembly is not null)
+        {
+            from = ModuleLoader.Load(assembly);
+            _loaded.Add(from);
+            _shell.AddModule(from.Module);
+        }
+
+        SourceSession s = _shell.Open(a.RequiredString("path"), a.String("module"), a.Int("keyframeInterval") ?? 0, a.Bool("scan"), from);
         return JsonOut.Build(w =>
         {
             w.WriteStartObject();
