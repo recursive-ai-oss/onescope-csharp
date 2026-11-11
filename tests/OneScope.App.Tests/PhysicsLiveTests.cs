@@ -120,8 +120,8 @@ public sealed class PhysicsLiveTests
     [InlineData(true)]
     public async Task AttachingMidRunGivesTheHostsHashesAtTheHostsStepNumbersAndForksFromTheLiveHistory(bool three)
     {
-        string dir = Path.Combine(Path.GetTempPath(), "onescope-physlive-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(dir);
+        // A short path: Unix socket paths are limited to about a hundred bytes, and macOS temp paths are long.
+        string dir = LiveAndSessionTests.NewDir();
         try
         {
             using var host = new PhysicsHostThread(three, 300, dir);
