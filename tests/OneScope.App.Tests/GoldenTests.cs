@@ -97,4 +97,28 @@ public sealed class GoldenTests
         Harness.Report($"golden {golden}: max per-channel difference {max} (tolerance 0); golden sha {Harness.Sha(File.ReadAllBytes(goldenFile))[..16]}");
         Assert.Equal(0, max);
     }
+
+    [Fact]
+    public void TheGpuValidationLayerHasNothingToSayAboutAnyView()
+    {
+        if (Environment.GetEnvironmentVariable("ONEGAME_GPU_VALIDATION") != "1")
+        {
+            Assert.Skip("Set ONEGAME_GPU_VALIDATION=1 (with the Khronos validation layer on VK_ADD_LAYER_PATH) to run this.");
+        }
+
+        using Harness h = new Harness(960, 540).Open().Open("test-2d-600.ostm");
+        h.Call("seek", """{"step":400}""");
+        h.Call("overlay", """{"view":0,"overlay":"Velocities","on":true}""");
+        h.Call("overlay", """{"view":0,"overlay":"Bounds","on":true}""");
+        h.Call("view", """{"add":"3d"}""");
+        h.Call("capture_frame", """{"path":"a.png"}""");
+        h.Call("capture_frame", """{"path":"b.png","view":0,"size":"640x360"}""");
+        h.Call("capture_frame", """{"path":"c.png","view":1,"size":"640x360"}""");
+        h.Call("seek", """{"step":401}""");
+        h.Call("overlay", """{"wireframe":true}""");
+        h.Call("capture_frame", """{"path":"d.png"}""");
+        string[] messages = h.Game.TakeGpuValidationMessages();
+        Harness.Report($"validation: {messages.Length} messages over 4 captures of 3D, 2D and wireframe views");
+        Assert.Empty(messages);
+    }
 }

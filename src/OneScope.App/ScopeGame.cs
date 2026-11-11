@@ -117,7 +117,7 @@ internal sealed class ScopeGame : GameDefinition
                 UiKit.ToggleButton("Inspector", () => shell.Panels.Inspector, on => { shell.Panels.Inspector = on; shell.Touch(); }, "panel-inspector"),
                 UiKit.ToggleButton("Timeline", () => shell.Panels.Timeline, on => { shell.Panels.Timeline = on; shell.Touch(); }, "panel-timeline"),
                 UiKit.ToggleButton("Log", () => shell.Panels.Log, on => { shell.Panels.Log = on; shell.Touch(); }, "panel-log"))
-            .Wrap().Align(Align.Center).Gap(Length.Px(6)).Padding(Length.Px(6)).Class("panel").Named("toolbar")
+            .Wrap().Shrink(0).Align(Align.Center).Gap(Length.Px(6)).Padding(Length.Px(6)).Class("panel").Named("toolbar")
             .BindVisible(() => shell.Solo < 0);
 
         ListView<TreeRow> tree = UiKit.TextList(() => shell.Tree(), r => r.Text, Length.Px(RowHeight), (row, _) => shell.Select(row.Entity.Id), null, "entities");
@@ -155,7 +155,7 @@ internal sealed class ScopeGame : GameDefinition
 
         Element main = Ui.Row(entities, views, inspector).Grow(1).Style(st => st.MinHeight(Length.Px(0))).Gap(Length.Px(2));
 
-        Element timeline = Ui.Box().Height(Length.Px(190)).Class("panel").Named("timeline").Focusable()
+        Element timeline = Ui.Box().Height(Length.Px(190)).Shrink(0).Class("panel").Named("timeline").Focusable()
             .BindVisible(() => shell.Solo < 0 && shell.Panels.Timeline);
         timeline.On(UiEventKind.PointerDown, (e, ev) => TimelinePointer(e, ev, true));
         timeline.On(UiEventKind.PointerMove, (e, ev) => TimelinePointer(e, ev, false));
@@ -163,7 +163,7 @@ internal sealed class ScopeGame : GameDefinition
 
         ListView<LogRow> log = UiKit.TextList(() => shell.Log(), r => LogText(r), Length.Px(RowHeight), null, null, "log");
         Element logPanel = Ui.Column(Title("Event log"), log.Grow(1).Style(st => st.MinHeight(Length.Px(0))))
-            .Height(Length.Px(130)).Class("panel").Named("log-panel")
+            .Height(Length.Px(130)).Shrink(0).Class("panel").Named("log-panel")
             .BindVisible(() => shell.Solo < 0 && shell.Panels.Log);
 
         return Ui.Column(toolbar, main, timeline, logPanel).Class("shell").Style(s => s.Anchor(AnchorPoint.Fill)).Gap(Length.Px(2));

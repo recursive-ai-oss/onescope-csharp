@@ -25,6 +25,8 @@ internal sealed class Harness : IDisposable
         Ops = new ScopeEndpoint(Shell, _game, surface);
     }
 
+    public GameInstance Game => _game;
+
     public ShellModel Shell { get; }
 
     public ScopeEndpoint Ops { get; }
