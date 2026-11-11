@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>$(OneScopeRootNamespace).Samples.ProbeSample</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\OneScope.Probe\OneScope.Probe.csproj" />
+    <ProjectReference Include="..\..\src\OneScope.Attach\OneScope.Attach.csproj" />
+    <ProjectReference Include="..\..\tests\OneScope.TestModule\OneScope.TestModule.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\..\testdata\test-10000.ostm" Link="test-10000.ostm" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

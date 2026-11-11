@@ -8,7 +8,7 @@ namespace OneScope.TestModule;
 /// The test module's replay file (little endian):
 /// magic "OSTM", u16 version (1), u16 flags (bit 0: hash rows present), u32 setup length (6),
 /// setup (u8 dimensions 2|3, u8 body count 1..64, u32 seed), u32 step count,
-/// then if flagged (step count + 1) u64 world hashes (row i is the hash at step i),
+/// then if flag bit 1 a u32 length and a start snapshot (the world's snapshot at the host step the stream began at; viewer step 0), then if flag bit 0 (step count + 1) u64 world hashes (row i is the hash at step i),
 /// then per step u16 input length and that many bytes.
 /// </summary>
 public static class TestFormat
@@ -28,7 +28,7 @@ public static class TestFormat
     private static ReadOnlySpan<byte> Magic => "OSTM"u8;
 
     /// <summary>The parsed contents of a replay file.</summary>
-    public sealed record Parsed(byte[] Setup, ReadOnlyMemory<byte>[] Inputs, ulong[]? Hashes);
+    public sealed record Parsed(byte[] Setup, ReadOnlyMemory<byte>[] Inputs, ulong[]? Hashes, byte[]? BaseSnapshot);
 
     /// <summary>Reads a replay file. Every length is checked against the bytes that remain before anything is allocated.</summary>
     /// <exception cref="ScopeFormatException">The bytes are not a valid replay.</exception>
@@ -49,9 +49,9 @@ public static class TestFormat
         }
 
         ushort flags = ReadU16(s, ref pos, name, "flags");
-        if ((flags & ~1) != 0)
+        if ((flags & ~3) != 0)
         {
-            throw new ScopeFormatException(name, $"expected flags 0 or 1 at offset 6, found {flags}.");
+            throw new ScopeFormatException(name, $"expected flags 0 to 3 at offset 6, found {flags}.");
         }
 
         uint setupLen = ReadU32(s, ref pos, name, "setup length");
@@ -66,6 +66,13 @@ public static class TestFormat
         if (count > MaxSteps)
         {
             throw new ScopeFormatException(name, $"expected at most {MaxSteps} steps, found {count}.");
+        }
+
+        byte[]? baseSnapshot = null;
+        if ((flags & 2) != 0)
+        {
+            uint snapLen = ReadU32(s, ref pos, name, "snapshot length");
+            baseSnapshot = Take(s, ref pos, checked((int)Math.Min(snapLen, int.MaxValue)), name, "start snapshot").ToArray();
         }
 
         ulong[]? hashes = null;
@@ -108,15 +115,15 @@ public static class TestFormat
             throw new ScopeFormatException(name, $"expected the file to end at offset {pos}, but {s.Length - pos} bytes follow.");
         }
 
-        return new Parsed(setup, inputs, hashes);
+        return new Parsed(setup, inputs, hashes, baseSnapshot);
     }
 
     /// <summary>Writes a replay file. Hash rows are written when <paramref name="hashes"/> is not null.</summary>
-    public static void Write(IBufferWriter<byte> writer, ReadOnlySpan<byte> setup, Recording recording, ulong[]? hashes)
+    public static void Write(IBufferWriter<byte> writer, ReadOnlySpan<byte> setup, Recording recording, ulong[]? hashes, byte[]? baseSnapshot = null)
     {
         ArgumentNullException.ThrowIfNull(recording);
         long count = recording.StepCount;
-        long size = 4 + 2 + 2 + 4 + setup.Length + 4 + (hashes is null ? 0 : (count + 1) * 8) + count * 2;
+        long size = 4 + 2 + 2 + 4 + setup.Length + 4 + (baseSnapshot is null ? 0 : 4 + baseSnapshot.Length) + (hashes is null ? 0 : (count + 1) * 8) + count * 2;
         for (long i = 0; i < count; i++)
         {
             size += recording.InputAt(i).Length;
@@ -128,7 +135,7 @@ public static class TestFormat
         pos = 4;
         BinaryPrimitives.WriteUInt16LittleEndian(o[pos..], Version);
         pos += 2;
-        BinaryPrimitives.WriteUInt16LittleEndian(o[pos..], (ushort)(hashes is null ? 0 : 1));
+        BinaryPrimitives.WriteUInt16LittleEndian(o[pos..], (ushort)((hashes is null ? 0 : 1) | (baseSnapshot is null ? 0 : 2)));
         pos += 2;
         BinaryPrimitives.WriteUInt32LittleEndian(o[pos..], (uint)setup.Length);
         pos += 4;
@@ -136,6 +143,14 @@ public static class TestFormat
         pos += setup.Length;
         BinaryPrimitives.WriteUInt32LittleEndian(o[pos..], (uint)count);
         pos += 4;
+        if (baseSnapshot is not null)
+        {
+            BinaryPrimitives.WriteUInt32LittleEndian(o[pos..], (uint)baseSnapshot.Length);
+            pos += 4;
+            baseSnapshot.CopyTo(o[pos..]);
+            pos += baseSnapshot.Length;
+        }
+
         if (hashes is not null)
         {
             foreach (ulong h in hashes)

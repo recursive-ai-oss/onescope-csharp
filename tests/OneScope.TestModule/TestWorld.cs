@@ -55,7 +55,22 @@ public sealed class TestWorld : IScopeWorld
     }
 
     /// <inheritdoc />
-    public long Step { get; private set; }
+    public long Step => _step - _base;
+
+    /// <summary>
+    /// Makes a world that starts from a host snapshot taken at host step S: <see cref="Step"/> reads 0 there while the hash and snapshots
+    /// keep using the host's step, so a viewer's step j hashes like the host's step S + j.
+    /// </summary>
+    public static TestWorld FromStart(ReadOnlySpan<byte> setup, ReadOnlySpan<byte> snapshot)
+    {
+        var world = new TestWorld(setup);
+        world.Restore(snapshot);
+        world._base = world._step;
+        return world;
+    }
+
+    private long _step;
+    private long _base;
 
     private static uint Next(ref uint state)
     {
@@ -67,7 +82,7 @@ public sealed class TestWorld : IScopeWorld
     public ulong Hash()
     {
         ulong h = 14695981039346656037UL;
-        Mix(ref h, Step);
+        Mix(ref h, _step);
         Mix(ref h, _gravity);
         for (int i = 0; i < _count; i++)
         {
@@ -96,9 +111,9 @@ public sealed class TestWorld : IScopeWorld
     public void Advance(ReadOnlySpan<byte> input, TimelineSink sink)
     {
         ArgumentNullException.ThrowIfNull(sink);
-        long reached = Step + 1;
+        long reached = _step + 1;
         RunStages(StageCountAll, input, sink, reached);
-        Step = reached;
+        _step = reached;
         if (sink.IsRecording)
         {
             long energy = 0;
@@ -150,7 +165,7 @@ public sealed class TestWorld : IScopeWorld
             throw new ArgumentOutOfRangeException(nameof(position), position, $"Positions are 0 to {TestModule.StageCount}.");
         }
 
-        RunStages(position, input, TimelineSink.None, Step + 1);
+        RunStages(position, input, TimelineSink.None, _step + 1);
     }
 
     private void RunStages(int stages, ReadOnlySpan<byte> input, TimelineSink sink, long reached)
@@ -313,7 +328,7 @@ public sealed class TestWorld : IScopeWorld
         ArgumentNullException.ThrowIfNull(writer);
         Span<byte> o = writer.GetSpan(12 + _count * BodyInts * 4);
         int pos = 0;
-        BinaryPrimitives.WriteInt64LittleEndian(o, Step);
+        BinaryPrimitives.WriteInt64LittleEndian(o, _step);
         BinaryPrimitives.WriteInt32LittleEndian(o[8..], _gravity);
         pos = 12;
         for (int i = 0; i < _count; i++)
@@ -350,9 +365,9 @@ public sealed class TestWorld : IScopeWorld
         }
 
         long step = BinaryPrimitives.ReadInt64LittleEndian(snapshot);
-        if (step < 0)
+        if (step < _base)
         {
-            throw new ScopeFormatException("snapshot", $"expected a step of 0 or more at offset 0, found {step}.");
+            throw new ScopeFormatException("snapshot", $"expected a step of {_base} or more at offset 0, found {step}.");
         }
 
         int pos;
@@ -366,7 +381,7 @@ public sealed class TestWorld : IScopeWorld
             }
         }
 
-        Step = step;
+        _step = step;
         _gravity = BinaryPrimitives.ReadInt32LittleEndian(snapshot[8..]);
         pos = 12;
         for (int i = 0; i < _count; i++)

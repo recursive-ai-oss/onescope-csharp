@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>$(OneScopePackagePrefix).Attach</AssemblyName>
+    <RootNamespace>$(OneScopeRootNamespace).Attach</RootNamespace>
+    <PackageId>$(OneScopePackagePrefix).Attach</PackageId>
+    <Description>The viewer side of a probe (list running programs, connect, re-simulate a live stream locally) and the .oscope session file. BCL only.</Description>
+    <IsPackable>true</IsPackable>
+    <IsAotCompatible>true</IsAotCompatible>
+    <IsTrimmable>true</IsTrimmable>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\OneScope.Sdk\OneScope.Sdk.csproj" />
+    <ProjectReference Include="..\OneScope.Probe\OneScope.Probe.csproj" />
+  </ItemGroup>
+</Project>

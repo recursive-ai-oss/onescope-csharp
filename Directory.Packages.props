@@ -5,5 +5,6 @@
   <!-- Test-only packages. src/ projects take no package references. -->
   <ItemGroup>
     <PackageVersion Include="xunit.v3" Version="4.0.3" />
+    <PackageVersion Include="SharpFuzz" Version="2.2.0" />
   </ItemGroup>
 </Project>
