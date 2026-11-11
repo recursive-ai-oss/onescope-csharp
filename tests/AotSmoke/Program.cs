@@ -10,7 +10,7 @@ using OneScope.TestModule;
 byte[] bytes = TestReplayBuilder.Build(dimensions: 3, bodies: 16, seed: 3, steps: 2000);
 var module = new TestModule();
 var source = (TestSource)module.Open(bytes, "smoke");
-var history = new History(source, new HistoryOptions { KeyframeInterval = 64 });
+var history = new History(source, new ScopeHistoryOptions { KeyframeInterval = 64 });
 ulong[] expected = source.ExpectedHashes!;
 
 history.Seek(1500);
@@ -74,6 +74,13 @@ using (ScopeProbe hostProbe = ScopeProbe.Attach(new ProbeInfo(TestFormat.ModuleI
         return 1;
     }
 
+    // The host has already run 150 steps when the viewer attaches, so the live history starts at step 150.
+    for (int s = 0; s < 150; s++)
+    {
+        live.World.Advance(source.Recording.InputAt(s).Span, TimelineSink.None);
+        hostProbe.Record(source.Recording.InputAt(s).Span);
+    }
+
     string socketPath = hostProbe.SocketPath!;
     LiveSession? session = null;
     Task connect = Task.Run(() => session = LiveSession.Connect(socketPath, [module]));
@@ -83,7 +90,7 @@ using (ScopeProbe hostProbe = ScopeProbe.Attach(new ProbeInfo(TestFormat.ModuleI
         Thread.Sleep(1);
     }
 
-    for (int s = 0; s < 200; s++)
+    for (int s = 150; s < 350; s++)
     {
         live.World.Advance(source.Recording.InputAt(s).Span, TimelineSink.None);
         hostProbe.Record(source.Recording.InputAt(s).Span);
@@ -91,14 +98,14 @@ using (ScopeProbe hostProbe = ScopeProbe.Attach(new ProbeInfo(TestFormat.ModuleI
 
     connect.Wait();
     using LiveSession viewer = session!;
-    while (viewer.History.StepCount < 200)
+    while (viewer.History.EndStep < 350)
     {
         _ = viewer.Pump();
         Thread.Sleep(1);
     }
 
-    viewer.History.Seek(200);
-    if (viewer.History.StateHash != live.World.Hash())
+    viewer.History.Seek(350);
+    if (viewer.History.StartStep != 150 || viewer.History.StateHash != live.World.Hash())
     {
         Console.WriteLine("live hash mismatch");
         return 1;

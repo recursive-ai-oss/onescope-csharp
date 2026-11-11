@@ -1,5 +1,4 @@
 using System.Buffers;
-using OneScope.Attach;
 using OneScope.Sdk;
 
 namespace OneScope.TestModule;
@@ -38,12 +37,18 @@ public sealed class TestModule : ILiveModule
     public IScopeSource Open(ReadOnlyMemory<byte> data, string name)
     {
         TestFormat.Parsed p = TestFormat.Parse(data, name);
-        return new TestSource(name, p.Setup, Recording.Create(p.Setup, p.Inputs), p.Hashes, p.BaseSnapshot);
+        long start = p.BaseSnapshot is null ? 0 : System.Buffers.Binary.BinaryPrimitives.ReadInt64LittleEndian(p.BaseSnapshot);
+        if (start < 0)
+        {
+            throw new ScopeFormatException(name, $"expected a start step of 0 or more at the start snapshot's offset 0, found {start}.");
+        }
+
+        return new TestSource(name, p.Setup, Recording.Create(p.Setup, p.Inputs, start, p.Hashes ?? default), p.Hashes, p.BaseSnapshot);
     }
 
     /// <summary>
     /// Opens a live stream. The host's snapshot is the 6-byte setup followed by the world snapshot; each record is one step's input.
-    /// The viewer's step 0 is the host's step at the snapshot.
+    /// The recording starts at the host's step at the snapshot.
     /// </summary>
     public ILiveSource OpenLive(string libraryVersion, int formatVersion, ReadOnlyMemory<byte> snapshot, string name)
     {
@@ -61,9 +66,15 @@ public sealed class TestModule : ILiveModule
         byte[] setup = s[..TestFormat.SetupLength].ToArray();
         TestFormat.ValidateSetup(setup, name);
         byte[] world = s[TestFormat.SetupLength..].ToArray();
-        var recording = Recording.Create(setup, []).Fork(0);
+        long baseStep = System.Buffers.Binary.BinaryPrimitives.ReadInt64LittleEndian(world);
+        if (baseStep < 0)
+        {
+            throw new ScopeFormatException(name, $"expected a host step of 0 or more at the snapshot's offset {TestFormat.SetupLength}, found {baseStep}.");
+        }
+
+        var recording = Recording.Create(setup, [], baseStep).Fork(baseStep);
         var source = new TestSource(name, setup, recording, null, world);
-        return new TestLive(source, System.Buffers.Binary.BinaryPrimitives.ReadInt64LittleEndian(world));
+        return new TestLive(source);
     }
 
     /// <summary>Makes a source from parts, for tests and generators.</summary>
@@ -147,13 +158,10 @@ public sealed class TestSource : IScopeSource
 }
 
 /// <summary>A live test source: records are step inputs appended to the source's growing recording.</summary>
-internal sealed class TestLive(TestSource source, long baseStep) : ILiveSource
+internal sealed class TestLive(TestSource source) : ILiveSource
 {
     /// <inheritdoc />
     public IScopeSource Source { get; } = source;
-
-    /// <inheritdoc />
-    public long BaseStep { get; } = baseStep;
 
     /// <inheritdoc />
     public void AppendRecord(ReadOnlySpan<byte> record)

@@ -4,45 +4,6 @@ using OneScope.Sdk;
 namespace OneScope.Attach;
 
 /// <summary>
-/// A module that can also open a live stream from a probe: a snapshot taken at some step, then the library's replay records.
-/// Implemented by the same class as <see cref="IScopeModule"/>.
-/// </summary>
-public interface ILiveModule : IScopeModule
-{
-    /// <summary>
-    /// Opens a live stream. The returned source's world starts at the snapshot and reports <see cref="IScopeWorld.Step"/> 0 there
-    /// (the viewer's time starts at the moment of attaching), while <see cref="IScopeWorld.Hash"/> stays the host's hash at its own step,
-    /// so a viewer step <c>j</c> matches the host's step <c>BaseStep + j</c> bit for bit.
-    /// </summary>
-    /// <param name="libraryVersion">The library version the host announced.</param>
-    /// <param name="formatVersion">The replay-format version the host announced.</param>
-    /// <param name="snapshot">The host's snapshot. Untrusted: check every length before allocating from it.</param>
-    /// <param name="name">A display name for the source.</param>
-    /// <exception cref="ScopeFormatException">The snapshot or versions are not ones the module can read.</exception>
-    ILiveSource OpenLive(string libraryVersion, int formatVersion, ReadOnlyMemory<byte> snapshot, string name);
-}
-
-/// <summary>A source that grows as the host's records arrive.</summary>
-public interface ILiveSource
-{
-    /// <summary>
-    /// The source. Its <see cref="IScopeSource.Recording"/> must be writable and gains one step per step the host ran; the
-    /// <see cref="History"/> built on it sees new steps as they are appended.
-    /// </summary>
-    IScopeSource Source { get; }
-
-    /// <summary>The host's step index at the snapshot: viewer step <c>j</c> is host step <c>BaseStep + j</c>.</summary>
-    long BaseStep { get; }
-
-    /// <summary>
-    /// Adds one replay record, exactly the bytes the host passed to its probe. May add zero steps (a world API call that
-    /// belongs to the next step) or one. Called on the thread that owns the history.
-    /// </summary>
-    /// <exception cref="ScopeFormatException">The record is malformed.</exception>
-    void AppendRecord(ReadOnlySpan<byte> record);
-}
-
-/// <summary>
 /// A live attach turned into something the time model re-simulates: a <see cref="History"/> over the host's snapshot and records.
 /// Call <see cref="Pump"/> on the thread that owns the history to move arrived records into it.
 /// </summary>
@@ -77,9 +38,6 @@ public sealed class LiveSession : IDisposable
     /// <summary>The error that ended the stream, when <see cref="State"/> is <see cref="ClientState.Failed"/>.</summary>
     public ProbeFormatException? StreamError => _client.Error;
 
-    /// <summary>The host's step index of the history's step 0.</summary>
-    public long BaseStep => Live.BaseStep;
-
     /// <summary>
     /// Connects to a probe and opens the stream with the module whose id the handshake names.
     /// </summary>
@@ -90,7 +48,7 @@ public sealed class LiveSession : IDisposable
     /// <exception cref="ScopeFormatException">No module can open the stream, or the module rejected the snapshot.</exception>
     /// <exception cref="ProbeFormatException">The peer sent malformed bytes.</exception>
     /// <exception cref="System.Net.Sockets.SocketException">Nothing listens at the path.</exception>
-    public static LiveSession Connect(string socketPath, IReadOnlyList<IScopeModule> modules, HistoryOptions? options = null, ProbeLimits? limits = null)
+    public static LiveSession Connect(string socketPath, IReadOnlyList<IScopeModule> modules, ScopeHistoryOptions? options = null, ProbeLimits? limits = null)
     {
         ArgumentNullException.ThrowIfNull(modules);
         ProbeClient client = ProbeClient.Connect(socketPath, limits);

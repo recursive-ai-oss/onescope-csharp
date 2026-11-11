@@ -27,7 +27,7 @@ public class SeekTests
     public void HistoryPlaybackGivesTheModulesOwnRows(int interval)
     {
         TestSource source = Fixtures.OpenLong();
-        var history = new History(source, new HistoryOptions { KeyframeInterval = interval });
+        var history = new History(source, new ScopeHistoryOptions { KeyframeInterval = interval });
         Assert.Equal(source.ExpectedHashes![0], history.StateHash);
         long mismatches = 0;
         for (long s = 1; s <= source.Recording.StepCount; s++)
@@ -59,7 +59,7 @@ public class SeekTests
         }
 
         // Forward, then backward, on one history (keyframes accumulate as it goes).
-        var h1 = new History(Fixtures.OpenLong(), new HistoryOptions { KeyframeInterval = interval, MaxKeyframes = 100_000 });
+        var h1 = new History(Fixtures.OpenLong(), new ScopeHistoryOptions { KeyframeInterval = interval, MaxKeyframes = 100_000 });
         foreach (long k in set)
         {
             Check(h1, "forward", k);
@@ -72,7 +72,7 @@ public class SeekTests
 
         // Random jumps, fresh history.
         var rng = new Random(1234 + interval);
-        var h2 = new History(Fixtures.OpenLong(), new HistoryOptions { KeyframeInterval = interval, MaxKeyframes = 100_000 });
+        var h2 = new History(Fixtures.OpenLong(), new ScopeHistoryOptions { KeyframeInterval = interval, MaxKeyframes = 100_000 });
         for (int i = 0; i < 150; i++)
         {
             Check(h2, "random", rng.NextInt64(0, last + 1));
@@ -84,7 +84,7 @@ public class SeekTests
         }
 
         // Evicting history: at most 5 keyframes, random jumps and the step set.
-        var h3 = new History(Fixtures.OpenLong(), new HistoryOptions { KeyframeInterval = interval, MaxKeyframes = 5 });
+        var h3 = new History(Fixtures.OpenLong(), new ScopeHistoryOptions { KeyframeInterval = interval, MaxKeyframes = 5 });
         for (int i = 0; i < 150; i++)
         {
             Check(h3, "evicting", rng.NextInt64(0, last + 1));
@@ -99,7 +99,7 @@ public class SeekTests
         // Cold seek: each step in the set on a brand-new history.
         foreach (long k in set)
         {
-            var cold = new History(Fixtures.OpenLong(), new HistoryOptions { KeyframeInterval = interval });
+            var cold = new History(Fixtures.OpenLong(), new ScopeHistoryOptions { KeyframeInterval = interval });
             Check(cold, "cold", k);
             report.Add($"{k}:{truth[k]:x16}");
         }
@@ -133,14 +133,14 @@ public class SeekTests
         long steps = Fixtures.StraightHashes.Value.Length - 1;
         foreach (int n in new[] { 1, 7, 64, 1000 })
         {
-            var h = new History(Fixtures.OpenLong(), new HistoryOptions { KeyframeInterval = n, MaxKeyframes = 100_000 });
+            var h = new History(Fixtures.OpenLong(), new ScopeHistoryOptions { KeyframeInterval = n, MaxKeyframes = 100_000 });
             h.Scan();
             Assert.Equal(steps / n + 1, h.KeyframeCount);
             Assert.Equal(0, h.CurrentStep);
             Fixtures.Report($"keyframes interval={n}: {h.KeyframeCount} held for {steps} steps (floor(steps/N)+1 = {steps / n + 1}), {h.KeyframeBytes} bytes");
         }
 
-        var capped = new History(Fixtures.OpenLong(), new HistoryOptions { KeyframeInterval = 1 });
+        var capped = new History(Fixtures.OpenLong(), new ScopeHistoryOptions { KeyframeInterval = 1 });
         capped.Scan();
         Assert.Equal(1024, capped.KeyframeCount);
         Assert.Equal(0L, capped.KeyframeSteps.First());

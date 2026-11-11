@@ -6,6 +6,5 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\OneScope.Sdk\OneScope.Sdk.csproj" />
-    <ProjectReference Include="..\..\src\OneScope.Attach\OneScope.Attach.csproj" />
   </ItemGroup>
 </Project>

@@ -1,5 +1,6 @@
 using System.Numerics;
 using OneGame.Control;
+using OneScope.Attach;
 using RecursiveAI.OnePhysics.Scope;
 using OneScope.Sdk;
 
@@ -51,8 +52,10 @@ internal sealed class ViewState
 /// <summary>An opened file: the module, the source it produced and its history.</summary>
 internal sealed class SourceSession
 {
-    public SourceSession(int index, string path, IScopeModule module, IScopeSource source, History history, int keyframeInterval, SourceSession? parent = null, Branch? branch = null)
+    public SourceSession(int index, string path, IScopeModule module, IScopeSource source, History history, int keyframeInterval, SourceSession? parent = null, Branch? branch = null, LiveSession? live = null)
     {
+        Live = live;
+        Follow = live is not null;
         Parent = parent;
         Branch = branch;
         KeyframeInterval = keyframeInterval;
@@ -72,6 +75,15 @@ internal sealed class SourceSession
     public Branch? Branch { get; }
 
     public bool IsFork => Branch is not null;
+
+    /// <summary>The connection to a running program, or null for an opened file or a fork. Its recording grows as the program steps.</summary>
+    public LiveSession? Live { get; }
+
+    /// <summary>For a live source: whether the shared cursor follows the program's newest step as records arrive. Scrubbing back turns it off.</summary>
+    public bool Follow { get; set; }
+
+    /// <summary>What ended a live source's stream, once it has ended; null while it streams.</summary>
+    public string? LiveEnded { get; set; }
 
     /// <summary>The opened file at the root of this source's family of forks.</summary>
     public SourceSession Root => Parent?.Root ?? this;
@@ -135,7 +147,7 @@ internal sealed class PanelState
 /// the selection, the event log and the playback speed. Operations, the UI and the renderers all read and change this one object.
 /// Playback speed is presentation only: it counts presentation frames, never a clock, so it can't decide a world's state.
 /// </summary>
-internal sealed class ShellModel
+internal sealed partial class ShellModel
 {
     /// <summary>Largest file <c>open</c> reads.</summary>
     public const long MaxFileBytes = 512L << 20;
@@ -195,7 +207,7 @@ internal sealed class ShellModel
 
     public IReadOnlyList<IScopeModule> Modules => _modules;
 
-    /// <summary>The longest source's step count: the extent of the shared time axis.</summary>
+    /// <summary>The last step any source has reached: the end of the shared time axis.</summary>
     public long MaxSteps
     {
         get
@@ -203,10 +215,25 @@ internal sealed class ShellModel
             long max = 0;
             foreach (SourceSession s in _sources)
             {
-                max = Math.Max(max, s.History.StepCount);
+                max = Math.Max(max, s.History.EndStep);
             }
 
             return max;
+        }
+    }
+
+    /// <summary>The earliest step any source starts at: the start of the shared time axis (0 unless every source is a live attach).</summary>
+    public long MinSteps
+    {
+        get
+        {
+            long min = long.MaxValue;
+            foreach (SourceSession s in _sources)
+            {
+                min = Math.Min(min, s.History.StartStep);
+            }
+
+            return min == long.MaxValue ? 0 : min;
         }
     }
 
@@ -314,7 +341,7 @@ internal sealed class ShellModel
             throw new ControlException("bad_format", $"'{path}' is not a file any loaded module can open ({tried}).");
         }
 
-        var options = new HistoryOptions { KeyframeInterval = keyframeInterval > 0 ? keyframeInterval : HistoryOptions.DefaultKeyframeInterval };
+        var options = new ScopeHistoryOptions { KeyframeInterval = keyframeInterval > 0 ? keyframeInterval : ScopeHistoryOptions.DefaultKeyframeInterval };
         History history;
         try
         {
@@ -330,13 +357,28 @@ internal sealed class ShellModel
         }
 
         var session = new SourceSession(_sources.Count, full, used, source, history, options.KeyframeInterval) { Label = name };
+        AddSession(session);
+        AddLog(session.Index, "shell", $"opened {name} ({used.Id}, {source.Info.Dimensions}D, {history.StepCount} steps)");
+        Touch();
+        return session;
+    }
+
+    /// <summary>Adds a source with the default views: a 3D source gets 3D and 2D views, a 2D source the reverse.</summary>
+    private void AddSession(SourceSession session)
+    {
         _sources.Add(session);
         if (_sources.Count == 1)
         {
             ActiveSource = 0;
         }
 
-        history.Seek(Math.Min(Step, history.StepCount));
+        session.History.Seek(Math.Clamp(Step, session.History.StartStep, session.History.EndStep));
+        AddDefaultViews(session);
+    }
+
+    private void AddDefaultViews(SourceSession session)
+    {
+        IScopeSource source = session.Source;
         var view = new ViewState { Source = session.Index, Kind = source.Info.Dimensions == 3 ? ViewKind.Space3D : ViewKind.Plane2D, Overlays = DefaultOverlays(source.Info) };
         _views.Add(view);
         FrameView(view);
@@ -347,10 +389,6 @@ internal sealed class ShellModel
             _views.Add(other);
             FrameView(other);
         }
-
-        AddLog(session.Index, "shell", $"opened {name} ({used.Id}, {source.Info.Dimensions}D, {history.StepCount} steps)");
-        Touch();
-        return session;
     }
 
     public static ulong DefaultOverlays(SourceInfo info)
@@ -411,9 +449,9 @@ internal sealed class ShellModel
     /// </summary>
     public SourceSession Fork(SourceSession parent, long step, bool addView)
     {
-        if (step < 0 || step > parent.History.StepCount)
+        if (step < parent.History.StartStep || step > parent.History.EndStep)
         {
-            throw new ControlException("bad_args", $"Source {parent.Index} has {parent.History.StepCount} steps; fork at a step from 0 to {parent.History.StepCount}.");
+            throw new ControlException("bad_args", $"Source {parent.Index} runs from step {parent.History.StartStep} to {parent.History.EndStep}; fork at a step in that range.");
         }
 
         Branch branch = parent.History.Fork(step);
@@ -462,9 +500,9 @@ internal sealed class ShellModel
     public void Poke(SourceSession source, in PokeCall call)
     {
         Branch branch = RequireFork(source);
-        if (source.History.CurrentStep != source.History.StepCount)
+        if (source.History.CurrentStep != source.History.EndStep)
         {
-            throw new ControlException("rejected", $"Source {source.Index} is at step {source.History.CurrentStep} but its recording ends at {source.History.StepCount}; pokes apply at the end. Seek to step {source.History.StepCount} first.");
+            throw new ControlException("rejected", $"Source {source.Index} is at step {source.History.CurrentStep} but its recording ends at {source.History.EndStep}; pokes apply at the end. Seek to step {source.History.EndStep} first.");
         }
 
         try
@@ -503,22 +541,23 @@ internal sealed class ShellModel
     /// </summary>
     public void StepTime(long delta, SourceSession? target)
     {
-        if (delta > 0 && target is { IsFork: true } fork && fork.History.CurrentStep == fork.History.StepCount)
+        if (delta > 0 && target is { IsFork: true } fork && fork.History.CurrentStep == fork.History.EndStep)
         {
             StepFork(fork, delta);
             return;
         }
 
-        Seek(Math.Clamp(Step + delta, 0, MaxSteps));
+        Seek(Math.Clamp(Step + delta, MinSteps, MaxSteps));
     }
 
     /// <summary>Compares a fork with another source at a step. Both sources keep the cursors the shell gave them.</summary>
     public Difference? Diff(SourceSession a, SourceSession b, long step, out ulong hashA, out ulong hashB)
     {
-        long limit = Math.Min(a.History.StepCount, b.History.StepCount);
-        if (step < 0 || step > limit)
+        long from = Math.Max(a.History.StartStep, b.History.StartStep);
+        long limit = Math.Min(a.History.EndStep, b.History.EndStep);
+        if (step < from || step > limit)
         {
-            throw new ControlException("bad_args", $"Step {step} is outside both recordings: source {a.Index} has {a.History.StepCount} steps and source {b.Index} has {b.History.StepCount}; use 0 to {limit}.");
+            throw new ControlException("bad_args", $"Step {step} is outside both recordings: source {a.Index} runs {a.History.StartStep} to {a.History.EndStep} and source {b.Index} runs {b.History.StartStep} to {b.History.EndStep}; use {from} to {limit}.");
         }
 
         if (!ReferenceEquals(a.Module, b.Module))
@@ -542,15 +581,29 @@ internal sealed class ShellModel
     /// <summary>Moves every source to <paramref name="step"/> (each clamped to its own length) and clears any axis view.</summary>
     public void Seek(long step)
     {
-        if (step < 0 || step > MaxSteps)
+        SeekCore(step);
+
+        // Scrubbing off the newest step of a live source stops following; coming back to it follows again.
+        foreach (SourceSession s in _sources)
         {
-            throw new ControlException("bad_args", $"Step {step} is outside the time axis; use 0 to {MaxSteps}.");
+            if (s.Live is not null)
+            {
+                s.Follow = step >= s.History.EndStep;
+            }
+        }
+    }
+
+    private void SeekCore(long step)
+    {
+        if (step < MinSteps || step > MaxSteps)
+        {
+            throw new ControlException("bad_args", $"Step {step} is outside the time axis; use {MinSteps} to {MaxSteps}.");
         }
 
         Step = step;
         foreach (SourceSession s in _sources)
         {
-            s.History.Seek(Math.Min(step, s.History.StepCount));
+            s.History.Seek(Math.Clamp(step, s.History.StartStep, s.History.EndStep));
         }
 
         Touch();
@@ -624,15 +677,16 @@ internal sealed class ShellModel
 
             long target = Step + whole;
             long max = MaxSteps;
-            if (target >= max || target <= 0)
+            long min = MinSteps;
+            if (target >= max || target <= min)
             {
-                if (Loop && max > 0)
+                if (Loop && max > min)
                 {
-                    target = target <= 0 ? max : 0;
+                    target = target <= min ? max : min;
                 }
                 else
                 {
-                    target = Math.Clamp(target, 0, max);
+                    target = Math.Clamp(target, min, max);
                     SpeedMilliStepsPerSecond = 0;
                 }
             }
@@ -713,7 +767,7 @@ internal sealed class ShellModel
         var rows = new List<LogRow>();
         foreach (SourceSession s in _sources)
         {
-            long limit = Math.Min(Step, s.History.StepCount);
+            long limit = Math.Min(Step, s.History.EndStep);
             foreach (TrackData t in s.History.Tracks)
             {
                 if (t.Info.Kind == TrackKind.Series)

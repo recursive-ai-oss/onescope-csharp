@@ -11,7 +11,8 @@ namespace OneScope.Attach;
 /// <param name="ParentIndex">The source it was forked from, or -1.</param>
 /// <param name="ForkStep">The step it was forked at.</param>
 /// <param name="DivergenceStep">For a fork, the first step whose input differs from its parent's, or null while it has done nothing different.</param>
-public sealed record RestoredSource(int Index, string Name, IScopeSource Source, History History, int ParentIndex, long ForkStep, long? DivergenceStep);
+/// <param name="Branch">For a fork, its branch on the parent history, so it can be poked and stepped again; null otherwise.</param>
+public sealed record RestoredSource(int Index, string Name, IScopeSource Source, History History, int ParentIndex, long ForkStep, long? DivergenceStep, Branch? Branch = null);
 
 /// <summary>A session reopened: every source with a history, plus the shell's opaque layout.</summary>
 /// <param name="CursorStep">The saved time cursor.</param>
@@ -78,10 +79,30 @@ public static class SessionRestore
             }
 
             IScopeSource source = module.Open(bytes, entry.Name);
-            var history = new History(source, new HistoryOptions { KeyframeInterval = entry.KeyframeInterval });
-            history.Seek(Math.Min(file.CursorStep, history.StepCount));
+            Branch? branch = null;
+            if (entry.ParentIndex >= 0)
+            {
+                // A fork is replayed from its own recording, but must stay writable so it can be poked and stepped again.
+                source = source.WithRecording(source.Recording.Fork(source.Recording.EndStep));
+            }
+
+            var history = new History(source, new ScopeHistoryOptions { KeyframeInterval = entry.KeyframeInterval });
+            if (entry.ParentIndex >= 0)
+            {
+                RestoredSource parent = result[entry.ParentIndex];
+                try
+                {
+                    branch = parent.History.Adopt(history, entry.ForkStep);
+                }
+                catch (Exception ex) when (ex is ArgumentException)
+                {
+                    throw new ScopeFormatException(input, $"expected a fork of source {entry.ParentIndex} at step {entry.ForkStep}: {ex.Message}");
+                }
+            }
+
+            history.Seek(Math.Clamp(file.CursorStep, history.StartStep, history.EndStep));
             long? divergence = entry.ParentIndex >= 0 ? source.Recording.FirstDifference(result[entry.ParentIndex].Source.Recording) : null;
-            result.Add(new RestoredSource(i, entry.Name, source, history, entry.ParentIndex, entry.ForkStep, divergence));
+            result.Add(new RestoredSource(i, entry.Name, source, history, entry.ParentIndex, entry.ForkStep, divergence, branch));
         }
 
         return new RestoredSession(file.CursorStep, file.Layout, result);

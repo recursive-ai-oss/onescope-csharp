@@ -61,7 +61,7 @@ public sealed class Branch
     /// </summary>
     public bool Step()
     {
-        if (History.CurrentStep < History.StepCount)
+        if (History.CurrentStep < History.EndStep)
         {
             return History.Step();
         }
@@ -73,7 +73,7 @@ public sealed class Branch
 
     private void RequireHead()
     {
-        if (History.CurrentStep != History.StepCount)
+        if (History.CurrentStep != History.EndStep)
         {
             throw new InvalidOperationException("Seek the branch to the end of its recording before poking.");
         }

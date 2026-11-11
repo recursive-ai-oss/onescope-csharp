@@ -6,6 +6,7 @@ using OneGame.Control;
 using OneGame.Host;
 using OneGame.Live;
 using OneGame.Platform;
+using OneScope.Attach;
 
 namespace OneScope.App;
 
@@ -27,19 +28,25 @@ internal static class Program
             --keyframe <n>                     keyframe interval in steps (default 64)
             --no-wait                          with --run: exit after the operations instead of staying open (headless only)
 
+        Watch a running program (one that called the probe)
+          onescope attach                      list running programs with a probe, as JSON
+          onescope attach <pid|socket> [options]   open the shell on its live stream (same options as open; --dir <probe dir>)
+          onescope open <session.oscope>       reopen a saved session (sources, forks with their pokes, views, cameras)
+
         Drive a running shell (same JSON as the operations)
           onescope <operation> [json | --name value ...] --socket <path>
           onescope call <operation> [json] --socket <path>
           onescope mcp --socket <path>         stdio MCP bridge for agents
 
-        Operations: open, sources, seek, step, play, entities, inspect, overlay, axes, findings, fork, poke, diff, replay_save, pick,
-                    project, view, layout, capture_frame, capture_sequence, plus info, ui_tree, ui_query, ui_click, window, quit.
+        Operations: open, attach, follow, session_save, session_open, sources, seek, step, play, entities, inspect, overlay, axes, findings, fork,
+                    poke, diff, replay_save, pick, project, view, layout, capture_frame, capture_sequence, plus info, ui_tree, ui_query,
+                    ui_click, window, quit.
         Results are JSON. Errors are {"ok":false,"error":{"code","message"}} and exit code 1.
         Exit codes: 0 ok, 1 an operation failed, 2 usage, 4 could not run.
         """;
 
     private static readonly string[] KnownOps =
-        ["open", "sources", "seek", "step", "play", "entities", "inspect", "overlay", "axes", "findings", "fork", "pick", "project", "poke", "diff", "replay_save", "view", "layout", "capture_frame", "capture_sequence", "info", "ui_tree", "ui_query", "ui_click", "ui_hit", "ui_scale", "input_pointer", "input_key", "input_text", "window", "render_graph", "quit"];
+        ["open", "attach", "follow", "session_save", "session_open", "sources", "seek", "step", "play", "entities", "inspect", "overlay", "axes", "findings", "fork", "pick", "project", "poke", "diff", "replay_save", "view", "layout", "capture_frame", "capture_sequence", "info", "ui_tree", "ui_query", "ui_click", "ui_hit", "ui_scale", "input_pointer", "input_key", "input_text", "window", "render_graph", "quit"];
 
     internal static int Main(string[] args) => Run(args, Console.Out, Console.Error);
 
@@ -59,7 +66,13 @@ internal static class Program
                 return opts.Verb == "mcp" ? Bridge(opts, output, error) : CallRemote(opts, output, error);
             }
 
-            if (opts.Verb == "open")
+            if (opts.Verb == "attach" && opts.Positional.Count == 0)
+            {
+                output.WriteLine(ListProbes(opts.Value("dir")));
+                return 0;
+            }
+
+            if (opts.Verb is "open" or "attach")
             {
                 return RunShell(opts, output, error);
             }
@@ -90,9 +103,10 @@ internal static class Program
 
     private static int RunShell(Options o, TextWriter output, TextWriter error)
     {
+        bool attach = o.Verb == "attach";
         if (o.Positional.Count != 1)
         {
-            throw new ControlException("usage", "open takes one file: onescope open <file> [options].");
+            throw new ControlException("usage", attach ? "attach takes one process id or socket path: onescope attach <pid|socket> [options]; with none it lists the running probes." : "open takes one file: onescope open <file> [options].");
         }
 
         (int width, int height) = ParseSize(o.Value("size") ?? "1280x720");
@@ -120,11 +134,20 @@ internal static class Program
                 endpoint.Track(loaded);
             }
 
+            shell.ProbeDir = o.Value("dir");
             int exit = 0;
             string openArgs = JsonOut.Build(w =>
             {
                 w.WriteStartObject();
-                w.WriteString("path", o.Positional[0]);
+                if (attach && int.TryParse(o.Positional[0], NumberStyles.None, CultureInfo.InvariantCulture, out int pid))
+                {
+                    w.WriteNumber("pid", pid);
+                }
+                else
+                {
+                    w.WriteString(attach ? "socket" : "path", o.Positional[0]);
+                }
+
                 if (o.Value("keyframe") is string k && int.TryParse(k, NumberStyles.None, CultureInfo.InvariantCulture, out int interval))
                 {
                     w.WriteNumber("keyframeInterval", interval);
@@ -132,7 +155,7 @@ internal static class Program
 
                 w.WriteEndObject();
             });
-            exit = RunOp(endpoint, "open", openArgs, output);
+            exit = RunOp(endpoint, attach ? "attach" : "open", openArgs, output);
             foreach (string run in o.Values("run"))
             {
                 if (exit != 0)
@@ -172,6 +195,7 @@ internal static class Program
                 while (!instance.QuitRequested)
                 {
                     server.Pump();
+                    shell.PumpLive();
                     server.WaitForWork(10);
                 }
             }
@@ -180,6 +204,7 @@ internal static class Program
                 instance.RunRealtime(0, () =>
                 {
                     server.Pump();
+                    shell.PumpLive();
                     shell.AdvancePlayback(1);
                 });
             }
@@ -188,8 +213,47 @@ internal static class Program
         }
         finally
         {
+            shell.CloseLive();
             endpoint.Dispose();
         }
+    }
+
+    /// <summary>Lists running probes as JSON without starting a shell: the same result the attach operation gives with no arguments.</summary>
+    private static string ListProbes(string? dir)
+    {
+        ProbeListing listing = ProbeFinder.List(dir);
+        return JsonOut.Build(w =>
+        {
+            w.WriteStartObject();
+            w.WriteStartArray("probes");
+            foreach (ProbeEntry e in listing.Running)
+            {
+                w.WriteStartObject();
+                w.WriteNumber("pid", e.ProcessId);
+                w.WriteString("socket", e.SocketPath);
+                w.WriteString("module", e.Handshake.Info.ModuleId);
+                w.WriteString("library", e.Handshake.Info.LibraryVersion);
+                w.WriteNumber("format", e.Handshake.Info.FormatVersion);
+                w.WriteEndObject();
+            }
+
+            w.WriteEndArray();
+            w.WriteStartArray("removedStale");
+            foreach (string r in listing.Removed)
+            {
+                w.WriteStringValue(r);
+            }
+
+            w.WriteEndArray();
+            w.WriteStartArray("unreadable");
+            foreach (string u in listing.Unreadable)
+            {
+                w.WriteStringValue(u);
+            }
+
+            w.WriteEndArray();
+            w.WriteEndObject();
+        });
     }
 
     private static int RunOp(ScopeEndpoint endpoint, string op, string? json, TextWriter output)

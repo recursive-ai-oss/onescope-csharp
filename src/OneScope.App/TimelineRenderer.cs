@@ -17,13 +17,19 @@ internal static class TimelineLayout
 
     public static float Width(UiRect r) => Math.Max(r.Width - LabelWidth - (Pad * 2), 1);
 
-    public static float XOf(UiRect r, long step, long max) => Left(r) + (max <= 0 ? 0 : (float)((double)step / max * Width(r)));
+    public static float XOf(UiRect r, long step, TimeRange range) => Left(r) + (float)((double)(step - range.Min) / range.Length * Width(r));
 
-    public static long StepAt(UiRect r, float x, long max)
+    public static long StepAt(UiRect r, float x, TimeRange range)
     {
         double f = (x - Left(r)) / Width(r);
-        return Math.Clamp((long)Math.Round(f * max), 0, max);
+        return Math.Clamp(range.Min + (long)Math.Round(f * range.Length), range.Min, range.Max);
     }
+}
+
+/// <summary>The steps the timeline spans: from the earliest start of any source to the latest end. Never empty, so positions always divide.</summary>
+internal readonly record struct TimeRange(long Min, long Max)
+{
+    public long Length => Math.Max(Max - Min, 1);
 }
 
 /// <summary>Draws the timeline: a ruler, the time axis with its keyframes, other axes, the module's tracks and findings.</summary>
@@ -50,15 +56,15 @@ internal static class TimelineRenderer
         }
 
         SourceSession s = shell.Sources[Math.Min(shell.ActiveSource, shell.Sources.Count - 1)];
-        long max = Math.Max(shell.MaxSteps, 1);
+        var max = new TimeRange(shell.MinSteps, shell.MaxSteps);
         float left = TimelineLayout.Left(r);
         float width = TimelineLayout.Width(r);
         float y = r.Y + 4;
 
         // Ruler.
-        float step = GridMath.NiceStep(max / 8f);
+        float step = GridMath.NiceStep(max.Length / 8f);
         step = Math.Max(1, MathF.Round(step));
-        for (float t = 0; t <= max; t += step)
+        for (float t = MathF.Ceiling(max.Min / step) * step; t <= max.Max; t += step)
         {
             float x = TimelineLayout.XOf(r, (long)t, max);
             c.Fill(x, y + 12, 1, 5, Dim);
@@ -68,9 +74,9 @@ internal static class TimelineRenderer
         y += TimelineLayout.RulerHeight;
 
         // Time axis: the played-through extent, keyframes, and the cursor.
-        c.Text($"Time  {s.History.CurrentStep}/{s.History.StepCount}", r.X + 8, y, 11, Ink);
+        c.Text($"Time  {s.History.CurrentStep}/{s.History.EndStep}{(s.Live is null ? string.Empty : s.LiveEnded is null ? (s.Follow ? " live" : " live ||") : " ended")}", r.X + 8, y, 11, Ink);
         c.Fill(left, y, width, TimelineLayout.RowHeight - 2, Lane);
-        float scannedTo = TimelineLayout.XOf(r, Math.Min(s.History.ScannedThrough, s.History.StepCount), max);
+        float scannedTo = TimelineLayout.XOf(r, Math.Min(s.History.ScannedThrough, s.History.EndStep), max);
         c.Fill(left, y, Math.Max(scannedTo - left, 0), TimelineLayout.RowHeight - 2, Scanned);
         float last = float.MinValue;
         foreach (long k in s.History.KeyframeSteps)
@@ -99,7 +105,7 @@ internal static class TimelineRenderer
             c.Text($"fork {f.Index} @{branch.ForkStep}", r.X + 8, y, 11, active ? BranchInk : Ink);
             c.Fill(left, y, width, TimelineLayout.RowHeight - 2, Lane);
             float x0 = TimelineLayout.XOf(r, branch.ForkStep, max);
-            float x1 = Math.Max(TimelineLayout.XOf(r, f.History.StepCount, max), x0 + 2);
+            float x1 = Math.Max(TimelineLayout.XOf(r, f.History.EndStep, max), x0 + 2);
             c.Fill(x0, rowsTop + TimelineLayout.RowHeight - 3, 1, y - rowsTop - TimelineLayout.RowHeight + 8, BranchInk);
             c.Fill(x0, y + 5, x1 - x0, 3, active ? BranchInk : Dim);
             if (branch.DivergenceStep is long d)
@@ -169,7 +175,7 @@ internal static class TimelineRenderer
         c.Text($"{shell.Step}", Math.Min(px + 4, r.Right - 60), r.Y + 4, 11, Playhead);
     }
 
-    private static void DrawTrack(Painter c, UiRect r, TrackData t, float left, float width, float y, float h, long max)
+    private static void DrawTrack(Painter c, UiRect r, TrackData t, float left, float width, float y, float h, TimeRange max)
     {
         IReadOnlyList<TrackSample> samples = t.Samples;
         switch (t.Info.Kind)
@@ -230,7 +236,7 @@ internal static class TimelineRenderer
                     Array.Fill(up, double.MinValue);
                     foreach (TrackSample smp in samples)
                     {
-                        int col = Math.Clamp((int)((double)smp.Step / max * (columns - 1)), 0, columns - 1);
+                        int col = Math.Clamp((int)((double)(smp.Step - max.Min) / max.Length * (columns - 1)), 0, columns - 1);
                         lo[col] = Math.Min(lo[col], smp.Value);
                         up[col] = Math.Max(up[col], smp.Value);
                     }

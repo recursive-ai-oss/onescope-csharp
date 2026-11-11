@@ -9,7 +9,7 @@ The open sources of a session, the forks with their poke replays, the shared tim
 | 0 | 4 | magic `OSCP` |
 | 4 | 2 | version, 1 |
 | 6 | 2 | flags, 0 |
-| 8 | 8 | time cursor in steps, 0 or more (i64) |
+| 8 | 8 | time cursor, an absolute step number, 0 or more (i64) |
 | 16 | 4 | source count, at most 4096 |
 | 20 | 4 | layout length, at most 16 MiB |
 
@@ -21,7 +21,7 @@ Source count records follow the header, parents before their forks. Each has a 2
 |---|---|---|
 | 0 | 1 | kind: 0 embedded, 1 referenced |
 | 1 | 4 | parent source index, or -1; always an earlier source (i32) |
-| 5 | 8 | fork step; 0 when there is no parent (i64) |
+| 5 | 8 | fork step, an absolute step number of the parent; 0 when there is no parent (i64) |
 | 13 | 4 | keyframe interval for the source's history, at least 1 |
 | 17 | 2 | module id length, 1 to 4096 |
 | 19 | 2 | name length, 0 to 4096 |

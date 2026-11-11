@@ -8,7 +8,7 @@ namespace OneScope.TestModule;
 /// The test module's replay file (little endian):
 /// magic "OSTM", u16 version (1), u16 flags (bit 0: hash rows present), u32 setup length (6),
 /// setup (u8 dimensions 2|3, u8 body count 1..64, u32 seed), u32 step count,
-/// then if flag bit 1 a u32 length and a start snapshot (the world's snapshot at the host step the stream began at; viewer step 0), then if flag bit 0 (step count + 1) u64 world hashes (row i is the hash at step i),
+/// then if flag bit 1 a u32 length and a start snapshot (the world's snapshot at the host step the stream began at; its first 8 bytes are that step, the recording's start step), then if flag bit 0 (step count + 1) u64 world hashes (row i is the hash at the start step + i),
 /// then per step u16 input length and that many bytes.
 /// </summary>
 public static class TestFormat
@@ -73,6 +73,10 @@ public static class TestFormat
         {
             uint snapLen = ReadU32(s, ref pos, name, "snapshot length");
             baseSnapshot = Take(s, ref pos, checked((int)Math.Min(snapLen, int.MaxValue)), name, "start snapshot").ToArray();
+            if (baseSnapshot.Length < 8)
+            {
+                throw new ScopeFormatException(name, $"expected a start snapshot of at least 8 bytes, found {baseSnapshot.Length}.");
+            }
         }
 
         ulong[]? hashes = null;
@@ -126,7 +130,7 @@ public static class TestFormat
         long size = 4 + 2 + 2 + 4 + setup.Length + 4 + (baseSnapshot is null ? 0 : 4 + baseSnapshot.Length) + (hashes is null ? 0 : (count + 1) * 8) + count * 2;
         for (long i = 0; i < count; i++)
         {
-            size += recording.InputAt(i).Length;
+            size += recording.InputAt(recording.StartStep + i).Length;
         }
 
         Span<byte> o = writer.GetSpan(checked((int)size));
@@ -162,7 +166,7 @@ public static class TestFormat
 
         for (long i = 0; i < count; i++)
         {
-            ReadOnlySpan<byte> input = recording.InputAt(i).Span;
+            ReadOnlySpan<byte> input = recording.InputAt(recording.StartStep + i).Span;
             BinaryPrimitives.WriteUInt16LittleEndian(o[pos..], (ushort)input.Length);
             pos += 2;
             input.CopyTo(o[pos..]);

@@ -15,7 +15,7 @@ public class ForkTests
     {
         TestSource source = Fixtures.OpenLong();
         byte[] originalBytes = Fixtures.Write(source);
-        var parent = new History(source, new HistoryOptions { KeyframeInterval = 64 });
+        var parent = new History(source, new ScopeHistoryOptions { KeyframeInterval = 64 });
         parent.Seek(3000);
 
         Branch branch = parent.Fork(3000);
@@ -52,7 +52,7 @@ public class ForkTests
         Assert.Equal(forkBytes, Fixtures.Write(reopened));
 
         // Replaying it reproduces the fork's hashes, and before the divergence the original's.
-        var replay = new History(reopened, new HistoryOptions { KeyframeInterval = 7 });
+        var replay = new History(reopened, new ScopeHistoryOptions { KeyframeInterval = 7 });
         for (long k = 0; k <= 3200; k++)
         {
             replay.Seek(k);

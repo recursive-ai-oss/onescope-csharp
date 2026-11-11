@@ -55,6 +55,15 @@ public readonly record struct DrawStyle(Color32 Color, int Overlay = 0, int Laye
         : this(color, overlay, layer, flags, default)
     {
     }
+
+    /// <summary>The deconstruction of the first preview, without the entity.</summary>
+    public void Deconstruct(out Color32 color, out int overlay, out int layer, out DrawFlags flags)
+    {
+        color = Color;
+        overlay = Overlay;
+        layer = Layer;
+        flags = Flags;
+    }
 }
 
 /// <summary>

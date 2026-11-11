@@ -4,7 +4,7 @@ namespace OneScope.Sdk;
 
 /// <summary>
 /// The time model for one source: a cursor over its steps with exact seeking. It keeps keyframe snapshots every
-/// <see cref="HistoryOptions.KeyframeInterval"/> steps and re-simulates between them, so the world at step k has the same
+/// <see cref="ScopeHistoryOptions.KeyframeInterval"/> steps and re-simulates between them, so the world at step k has the same
 /// <see cref="StateHash"/> however the cursor got there. Nothing here reads a clock; time is a step index.
 /// Not thread safe.
 /// </summary>
@@ -16,7 +16,7 @@ public sealed class History
         public byte[] Bytes { get; } = bytes;
     }
 
-    private readonly HistoryOptions _options;
+    private readonly ScopeHistoryOptions _options;
     private readonly List<Keyframe> _keyframes = [];
     private readonly ArrayBufferWriter<byte> _scratch = new();
     private readonly Dictionary<string, TrackData> _tracks = new(StringComparer.Ordinal);
@@ -32,19 +32,29 @@ public sealed class History
     private string _viewAxis = AxisIds.Time;
     private int _viewPosition;
     private long _scanned;
+    private long? _firstMismatch;
 
-    /// <summary>Creates a history at step 0.</summary>
-    /// <exception cref="ArgumentException">The source does not declare the time axis, or its world does not start at step 0.</exception>
+    /// <summary>Creates a history at the recording's <see cref="Recording.StartStep"/>.</summary>
+    /// <exception cref="ArgumentException">The source does not declare the time axis, or its new world is not at the recording's start step.</exception>
     /// <exception cref="ArgumentOutOfRangeException">An option is out of range.</exception>
-    public History(IScopeSource source, HistoryOptions? options = null)
+    public History(IScopeSource source, ScopeHistoryOptions? options = null)
         : this(source, options, null, null)
     {
     }
 
-    private History(IScopeSource source, HistoryOptions? options, History? seedFrom, long? seedThrough)
+    /// <summary>The 0.1 constructor, kept for modules built against SDK 0.1. Same as the one taking <see cref="ScopeHistoryOptions"/>.</summary>
+    /// <param name="source">The source to play.</param>
+    /// <param name="options">Limits and keyframe spacing; null for the defaults.</param>
+    [Obsolete("Pass a ScopeHistoryOptions. This overload is kept for modules built against SDK 0.1 and will be removed before 1.0.")]
+    public History(IScopeSource source, HistoryOptions? options)
+        : this(source, (ScopeHistoryOptions?)options, null, null)
+    {
+    }
+
+    private History(IScopeSource source, ScopeHistoryOptions? options, History? seedFrom, long? seedThrough)
     {
         ArgumentNullException.ThrowIfNull(source);
-        _options = options ?? new HistoryOptions();
+        _options = options ?? new ScopeHistoryOptions();
         if (_options.KeyframeInterval < 1)
         {
             throw new ArgumentOutOfRangeException(nameof(options), _options.KeyframeInterval, "KeyframeInterval must be at least 1.");
@@ -79,18 +89,20 @@ public sealed class History
         _discard = new TimelineSink(_tracks, _findings, _options.MaxFindings);
         _discard.Begin(0, recording: false);
         _world = source.CreateWorld();
-        if (_world.Step != 0)
+        if (_world.Step != Recording.StartStep)
         {
-            throw new ArgumentException("A new world must be at step 0.", nameof(source));
+            throw new ArgumentException($"A new world must be at the recording's start step {Recording.StartStep}, but it is at {_world.Step}.", nameof(source));
         }
 
-        AddKeyframe(0);
+        _step = Recording.StartStep;
+        _scanned = Recording.StartStep;
+        AddKeyframe(Recording.StartStep);
         if (seedFrom is not null)
         {
             long through = seedThrough!.Value;
             foreach (Keyframe k in seedFrom._keyframes)
             {
-                if (k.Step > 0 && k.Step <= through)
+                if (k.Step > Recording.StartStep && k.Step <= through)
                 {
                     InsertKeyframe(k);
                 }
@@ -118,11 +130,27 @@ public sealed class History
     /// <summary>The source's recording. For a fork it grows as the fork is stepped.</summary>
     public Recording Recording { get; }
 
-    /// <summary>The cursor: the step the world is at, 0 to <see cref="StepCount"/>.</summary>
+    /// <summary>The cursor: the step the world is at, <see cref="StartStep"/> to <see cref="EndStep"/>.</summary>
     public long CurrentStep => _step;
 
-    /// <summary>The number of steps recorded.</summary>
+    /// <summary>The first step the history can show: 0 for a replay from the beginning, the host's step for a live attach.</summary>
+    public long StartStep => Recording.StartStep;
+
+    /// <summary>The last step recorded, and the highest step the cursor can reach. Grows for a fork that is stepped or a live source.</summary>
+    public long EndStep => Recording.EndStep;
+
+    /// <summary>The number of steps recorded after <see cref="StartStep"/>.</summary>
     public long StepCount => Recording.StepCount;
+
+    /// <summary>
+    /// The first step at which the world's hash disagreed with the hash the file recorded for it (see
+    /// <see cref="Recording.ExpectedHashes"/>), or null while none has. Checked the first time each step is run, so
+    /// <see cref="Scan"/> or playing to the end covers the whole file. A finding with code <see cref="MismatchCode"/> marks it on the timeline.
+    /// </summary>
+    public long? FirstHashMismatch => _firstMismatch;
+
+    /// <summary>The finding code raised at the first step whose hash differs from the file's recorded hash.</summary>
+    public const string MismatchCode = "replay.hash-mismatch";
 
     /// <summary>The world at <see cref="CurrentStep"/>, always at axis position 0. Valid until the next seek or step.</summary>
     public IScopeWorld World => _world;
@@ -188,12 +216,12 @@ public sealed class History
     /// Moves the cursor to <paramref name="step"/> exactly. Restores the nearest keyframe at or before it (or just
     /// steps on when the cursor is already between that keyframe and the target) and re-simulates. Clears any axis position.
     /// </summary>
-    /// <exception cref="ArgumentOutOfRangeException"><paramref name="step"/> is not in 0 to <see cref="StepCount"/>.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="step"/> is not in <see cref="StartStep"/> to <see cref="EndStep"/>.</exception>
     public void Seek(long step)
     {
-        if ((ulong)step > (ulong)StepCount)
+        if (step < StartStep || step > EndStep)
         {
-            throw new ArgumentOutOfRangeException(nameof(step), step, $"Step must be 0 to {StepCount}.");
+            throw new ArgumentOutOfRangeException(nameof(step), step, $"Step must be {StartStep} to {EndStep}.");
         }
 
         ClearView();
@@ -246,14 +274,14 @@ public sealed class History
             return;
         }
 
-        if (_step >= StepCount)
+        if (_step >= EndStep)
         {
             throw new InvalidOperationException("No step follows the cursor, so there is nothing to step through on this axis.");
         }
 
         if (!_worldValid)
         {
-            Seek(_step < 0 ? 0 : _step);
+            Seek(_step);
         }
 
         _scratch.ResetWrittenCount();
@@ -279,7 +307,7 @@ public sealed class History
         if (axis == AxisIds.Time)
         {
             long target = _step + delta;
-            if (target < 0 || target > StepCount)
+            if (target < StartStep || target > EndStep)
             {
                 return false;
             }
@@ -291,7 +319,7 @@ public sealed class History
         AxisInfo info = FindAxis(axis);
         long current = _viewAxis == axis ? _viewPosition : 0;
         long next = current + delta;
-        if (next < 0 || next > info.PositionCount || (next > 0 && _step >= StepCount))
+        if (next < 0 || next > info.PositionCount || (next > 0 && _step >= EndStep))
         {
             return false;
         }
@@ -307,7 +335,7 @@ public sealed class History
     public void Scan(long throughStep = long.MaxValue)
     {
         long back = _step;
-        long target = Math.Min(throughStep, StepCount);
+        long target = Math.Min(throughStep, EndStep);
         if (target > _scanned)
         {
             Seek(Math.Min(back, _scanned));
@@ -321,7 +349,7 @@ public sealed class History
     /// Forks the world at <paramref name="step"/>. The branch has its own source, recording and history, seeded from this
     /// history's keyframes and timeline data; pokes apply only to it. This history is not changed.
     /// </summary>
-    /// <exception cref="ArgumentOutOfRangeException"><paramref name="step"/> is not in 0 to <see cref="StepCount"/>.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="step"/> is not in <see cref="StartStep"/> to <see cref="EndStep"/>.</exception>
     public Branch Fork(long step)
     {
         Recording forked = Recording.Fork(step);
@@ -329,6 +357,36 @@ public sealed class History
         var child = new History(source, _options, this, step);
         child.Seek(step);
         var branch = new Branch(this, child, step);
+        _branches.Add(branch);
+        return branch;
+    }
+
+    /// <summary>
+    /// Registers <paramref name="child"/>, a history over a writable recording rebuilt from a saved fork's replay, as a branch of this
+    /// one forked at <paramref name="forkStep"/>. Reopening a session uses it so a restored fork can be poked and stepped like the original.
+    /// </summary>
+    /// <exception cref="ArgumentException">The child's recording is read-only, starts at another step, ends before the fork step, or
+    /// differs from this recording before <paramref name="forkStep"/>.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="forkStep"/> is outside this history.</exception>
+    public Branch Adopt(History child, long forkStep)
+    {
+        ArgumentNullException.ThrowIfNull(child);
+        if (forkStep < StartStep || forkStep > EndStep)
+        {
+            throw new ArgumentOutOfRangeException(nameof(forkStep), forkStep, $"Step must be {StartStep} to {EndStep}.");
+        }
+
+        if (!child.Recording.IsWritable || child.StartStep != StartStep || child.EndStep < forkStep)
+        {
+            throw new ArgumentException($"The child must be writable, start at step {StartStep} and reach step {forkStep}.", nameof(child));
+        }
+
+        if (Recording.FirstDifference(child.Recording) is long first && first < forkStep)
+        {
+            throw new ArgumentException($"The child's inputs differ from this recording at step {first}, before the fork step {forkStep}.", nameof(child));
+        }
+
+        var branch = new Branch(this, child, forkStep);
         _branches.Add(branch);
         return branch;
     }
@@ -347,7 +405,7 @@ public sealed class History
 
     internal void AppendAndAdvance(ReadOnlySpan<byte> input)
     {
-        if (_step != StepCount)
+        if (_step != EndStep)
         {
             throw new InvalidOperationException("Only the end of a recording can be extended.");
         }
@@ -383,11 +441,27 @@ public sealed class History
         if (recording)
         {
             _scanned = reached;
+            CheckRecordedHash(reached, sink);
         }
 
         if (reached % _options.KeyframeInterval == 0)
         {
             AddKeyframe(reached);
+        }
+    }
+
+    private void CheckRecordedHash(long reached, TimelineSink sink)
+    {
+        long i = reached - Recording.StartStep;
+        ReadOnlySpan<ulong> expected = Recording.ExpectedHashes.Span;
+        if (_firstMismatch is null && (ulong)i < (ulong)expected.Length && expected[(int)i] != _world.Hash())
+        {
+            _firstMismatch = reached;
+            sink.Finding(
+                MismatchCode,
+                Severity.Error,
+                [],
+                $"The world's hash at step {reached} is {_world.Hash():x16}; the file recorded {expected[(int)i]:x16}. Playing it here does not reproduce the recording from this step on.");
         }
     }
 
