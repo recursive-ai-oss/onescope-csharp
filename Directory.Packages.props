@@ -2,6 +2,11 @@
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
   </PropertyGroup>
+  <!-- Bundled library modules (the app is allowed to reference other one* packages). -->
+  <ItemGroup>
+    <PackageVersion Include="RecursiveAI.OnePhysics" Version="1.0.0" />
+    <PackageVersion Include="RecursiveAI.OnePhysics.Scope" Version="1.1.0-preview.1" />
+  </ItemGroup>
   <!-- Test-only packages. src/ projects take no package references. -->
   <ItemGroup>
     <PackageVersion Include="xunit.v3" Version="4.0.3" />

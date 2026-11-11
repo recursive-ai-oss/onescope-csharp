@@ -9,11 +9,13 @@
     <PackageReference Include="xunit.v3" />
   </ItemGroup>
   <ItemGroup>
+    <PackageReference Include="RecursiveAI.OnePhysics" />
     <ProjectReference Include="..\..\src\OneScope.App\OneScope.App.csproj" />
     <ProjectReference Include="..\..\src\OneScope.Sdk\OneScope.Sdk.csproj" />
     <ProjectReference Include="..\OneScope.TestModule\OneScope.TestModule.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="..\..\testdata\physics-*.*" Link="testdata\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\testdata\*.ostm" Link="testdata\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <None Include="goldens\*.png" Link="goldens\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

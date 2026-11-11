@@ -13,12 +13,17 @@ internal sealed class Harness : IDisposable
 {
     private readonly GameInstance _game;
 
-    public Harness(int width = 960, int height = 540)
+    public Harness(int width = 960, int height = 540, bool bundled = false)
     {
         Output = Path.Combine(Path.GetTempPath(), "onescope-tests-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(Output);
         Shell = new ShellModel();
         Shell.AddModule(new TestModule.TestModule());
+        if (bundled)
+        {
+            Shell.AddBundledModules();
+        }
+
         _game = GameInstance.Create(new ScopeGame(Shell), new GameOptions { Headless = true, Width = width, Height = height });
         var surface = new ControlSurface(_game, Output);
         (_game.Stage as ScopeStage)?.Attach();

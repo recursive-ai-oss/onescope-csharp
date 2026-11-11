@@ -99,6 +99,7 @@ internal static class Program
         string artifacts = Path.GetFullPath(o.Value("artifacts") ?? "artifacts");
         bool headless = o.Flag("headless");
         var shell = new ShellModel();
+        shell.AddBundledModules();
         var game = new ScopeGame(shell);
         PlatformBackendKind backend = default;
         if (o.Value("backend") is string b && !Enum.TryParse(b, ignoreCase: true, out backend))

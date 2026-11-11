@@ -1,5 +1,6 @@
 using System.Numerics;
 using OneGame.Control;
+using RecursiveAI.OnePhysics.Scope;
 using OneScope.Sdk;
 
 namespace OneScope.App;
@@ -229,6 +230,9 @@ internal sealed class ShellModel
         ArgumentNullException.ThrowIfNull(module);
         _modules.Add(module);
     }
+
+    /// <summary>Adds the modules that ship inside the app: today the OnePhysics module.</summary>
+    public void AddBundledModules() => AddModule(new OnePhysicsModule());
 
     public SourceSession Source(int index)
     {

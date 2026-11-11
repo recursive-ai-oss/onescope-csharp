@@ -13,6 +13,7 @@
   <ItemGroup>
     <EmbeddedResource Include="fonts\NotoSans-Regular.ttf" LogicalName="NotoSans-Regular.ttf" />
     <None Include="fonts\OFL.txt" Pack="true" PackagePath="" />
+    <PackageReference Include="RecursiveAI.OnePhysics.Scope" />
     <ProjectReference Include="..\OneScope.Sdk\OneScope.Sdk.csproj" />
     <InternalsVisibleTo Include="OneScope.App.Tests" />
   </ItemGroup>
