@@ -150,7 +150,7 @@ the 3D views with the 3D renderer: solids become one lit mesh, lines, points, ar
 grid is labelled in the source's length unit. A 3D view is rendered by the 3D renderer into an offscreen image that the 2D renderer samples directly (the picture never leaves the GPU), and and the labels and
 the timeline are painted over everything. Forks hang below the time axis as branches: a line from the step they were forked at to the end of their recording,
 joined to the time axis, with a marker at the divergence step. Captures of the same state are byte-identical run to run on the same renderer; the committed goldens
-in `tests/OneScope.App.Tests/goldens` come from lavapipe (`VK_DRIVER_FILES=/usr/share/vulkan/icd.d/lvp_icd.json`). Which graphics device a process uses is onegame's pick, in a fixed order, and `ONEGAME_GPU_ADAPTER` (`software`, `discrete`, `integrated` or part of a device name) pins it; the tests pin `software` on Linux and Windows unless it is set. The goldens match exactly on the llvmpipe build that drew them and within one step per channel on another. Triangles and meshes in a 2D view
+in `tests/OneScope.App.Tests/goldens` come from lavapipe (`VK_DRIVER_FILES=/usr/share/vulkan/icd.d/lvp_icd.json`). Which graphics device a process uses is onegame's pick, in a fixed order, and `ONEGAME_GPU_ADAPTER` (`software`, `discrete`, `integrated` or part of a device name) pins it; the tests pin `software` on Linux and Windows unless it is set. The goldens match exactly on the llvmpipe build that drew them and within two steps per channel on another. Triangles and meshes in a 2D view
 are filled by one-pixel strips because the canvas has rectangles and rounded rectangles only.
 
 ## Compare

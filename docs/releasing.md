@@ -35,8 +35,10 @@ Packing the SDK, probe and attach packages is checked against the last published
   these jobs go green on a clean runner before any module package exists.
 - **`app`**: `tools/check-packages.sh` (strict), then the whole solution, the app's tests and, on Linux, the tool pack. It can only pass once the physics and navigation modules are on nuget.org.
 
-Golden images come from the lavapipe software renderer: the Linux `app` job installs it and compares pixels exactly (within one step per channel on a different llvmpipe build); macOS and Windows draw on the machine's renderer,
+Golden images come from the lavapipe software renderer: the Linux `app` job installs it and compares pixels exactly (within two steps per channel on a different llvmpipe build); macOS and Windows draw on the machine's renderer,
 which differs in the last bits, so there the tests check that three runs of each capture are byte-identical and skip the comparison with the goldens.
+The hosted Windows runner has the Vulkan loader but no driver, so onegame draws the shell on its CPU path (`CaptureResult.Renderer` is `cpu`), which has no scene views. The tests that look at scene pixels
+(`Harness.RequireGraphicsDevice`) skip there, and only there: on Linux and macOS a missing device fails them. Everything else, the live attach, hashes and operations included, runs on Windows.
 
 ## Releasing
 

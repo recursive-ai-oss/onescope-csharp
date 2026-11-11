@@ -7,7 +7,7 @@ namespace OneScope.App.Tests;
 /// <summary>
 /// Headless captures are byte-identical run to run and equal to the committed goldens. The goldens come from lavapipe (the software Vulkan
 /// driver); on another driver the pixels differ in the last bits, so the comparison runs only where the capture says it was drawn by llvmpipe,
-/// exactly on the build that drew them and within one step per channel on another build.
+/// exactly on the build that drew them and within two steps per channel on another build.
 /// Set ONESCOPE_UPDATE_GOLDENS=1 and ONESCOPE_GOLDEN_DIR=<the goldens folder> to rewrite them after a change you have looked at.
 /// </summary>
 [Collection("shell")]
@@ -19,10 +19,11 @@ public sealed class GoldenTests
     private const string ReferenceBuild = "LLVM 21.";
 
     /// <summary>
-    /// The most any channel may differ from a golden: none on the build that drew it, one step on another llvmpipe build (the rounding of
-    /// the same shader code), which is how the worker and the CI runners' older builds differ.
+    /// The most any channel may differ from a golden: none on the build that drew it, two steps on another llvmpipe build. The same shader code
+    /// rounds a channel differently there, and by a different amount on different processors (the worker's CPU differs by at most 1, a hosted
+    /// runner's by 2); a drawing change moves pixels far more than that.
     /// </summary>
-    private static int Tolerance(string renderer) => renderer.Contains(ReferenceBuild, StringComparison.Ordinal) ? 0 : 1;
+    private static int Tolerance(string renderer) => renderer.Contains(ReferenceBuild, StringComparison.Ordinal) ? 0 : 2;
 
     private static string GoldenPath(string name) => Path.Combine(AppContext.BaseDirectory, "goldens", name + ".png");
 
@@ -120,14 +121,17 @@ public sealed class GoldenTests
         CapturedFrame actual = Png.Load(runs[0].File);
         Assert.Equal((expected.Width, expected.Height), (actual.Width, actual.Height));
         int max = 0;
+        int different = 0;
         for (int i = 0; i < expected.Rgba.Length; i++)
         {
-            max = Math.Max(max, Math.Abs(expected.Rgba[i] - actual.Rgba[i]));
+            int d = Math.Abs(expected.Rgba[i] - actual.Rgba[i]);
+            max = Math.Max(max, d);
+            different += d > 0 ? 1 : 0;
         }
 
         int tolerance = Tolerance(runs[0].Renderer);
-        Harness.Report($"golden {golden}: max per-channel difference {max} (tolerance {tolerance}); golden sha {Harness.Sha(File.ReadAllBytes(goldenFile))[..16]}");
-        Assert.True(max <= tolerance, $"Golden {golden} differs from the capture by {max} in a channel; the tolerance on {runs[0].Renderer} is {tolerance}.");
+        Harness.Report($"golden {golden}: max per-channel difference {max} (tolerance {tolerance}), {different} of {expected.Rgba.Length} channel values differ; golden sha {Harness.Sha(File.ReadAllBytes(goldenFile))[..16]}");
+        Assert.True(max <= tolerance, $"Golden {golden} differs from the capture by {max} in a channel ({different} of {expected.Rgba.Length} channel values differ); the tolerance on {runs[0].Renderer} is {tolerance}.");
     }
 
     [Fact]
