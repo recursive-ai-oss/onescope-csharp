@@ -25,9 +25,7 @@ another published version of the module, and only the final release of each is o
 
 ## Package validation
 
-When `ONESCOPE_FEEDS` is set, packing the SDK, probe and attach packages is checked against the last 0.x preview (`0.3.0-preview.1`), so a binary break for a module built on it is
-listed. The breaks intended for 1.0 are recorded in `src/OneScope.Sdk/CompatibilitySuppressions.xml`; any new one fails the pack. Once 1.0 is published, point
-`PackageValidationBaselineVersion` at it and delete the suppressions file.
+Packing the SDK, probe and attach packages is checked against the last published release (`PackageValidationBaselineVersion`, restored from nuget.org), so a binary break for a module built on it fails the pack. After each release, point the baseline at the version just published.
 
 ## Continuous integration
 

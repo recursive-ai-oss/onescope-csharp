@@ -13,10 +13,11 @@
   <ItemGroup>
     <None Include="..\..\README.md" Pack="true" PackagePath="" />
   </ItemGroup>
-  <!-- A pack is checked against the last 0.x preview; the baseline comes from the local feed in ONESCOPE_FEEDS. -->
-  <PropertyGroup Condition="'$(ONESCOPE_FEEDS)' != ''">
+  <!-- Every pack is checked against the last published release, so a binary break for a module built on it fails the pack
+       instead of being found at load time. The baseline is restored from nuget.org. -->
+  <PropertyGroup>
     <EnablePackageValidation>true</EnablePackageValidation>
-    <PackageValidationBaselineVersion>0.3.0-preview.1</PackageValidationBaselineVersion>
+    <PackageValidationBaselineVersion>1.0.0</PackageValidationBaselineVersion>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\OneScope.Sdk\OneScope.Sdk.csproj" />
