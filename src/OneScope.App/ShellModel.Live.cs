@@ -112,7 +112,7 @@ internal sealed partial class ShellModel
                 AddLog(session.Index, "shell", $"attached to {live.Name} (host step {live.History.StartStep}, library {live.Handshake.Info.LibraryVersion})");
                 if (session.Follow)
                 {
-                    SeekCore(session.History.EndStep);
+                    SeekCore(session.ToShared(session.History.EndStep));
                 }
 
                 p.State = "attached";
@@ -187,7 +187,7 @@ internal sealed partial class ShellModel
                 changed = true;
                 if (s.Follow)
                 {
-                    follow = Math.Max(follow, s.History.EndStep);
+                    follow = Math.Max(follow, s.ToShared(s.History.EndStep));
                 }
             }
 
@@ -237,7 +237,7 @@ internal sealed partial class ShellModel
         source.Follow = on;
         if (on)
         {
-            SeekCore(source.History.EndStep);
+            SeekCore(source.ToShared(source.History.EndStep));
         }
         else
         {

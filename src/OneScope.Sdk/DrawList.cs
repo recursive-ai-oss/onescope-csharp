@@ -48,21 +48,13 @@ public enum DrawFlags : byte
 public readonly record struct DrawStyle(Color32 Color, int Overlay = 0, int Layer = 0, DrawFlags Flags = DrawFlags.None, EntityId Entity = default)
 {
     /// <summary>
-    /// The constructor of the first preview, before items carried an entity. It stays so a module built against that preview
-    /// still loads; the item belongs to no entity.
+    /// A style for an item that belongs to no entity. It stays in 1.0 because the navigation module is built on a release that
+    /// only had this four-argument form; a module that draws entities passes <paramref name="color"/> and the entity in the
+    /// full constructor.
     /// </summary>
     public DrawStyle(Color32 color, int overlay, int layer, DrawFlags flags)
         : this(color, overlay, layer, flags, default)
     {
-    }
-
-    /// <summary>The deconstruction of the first preview, without the entity.</summary>
-    public void Deconstruct(out Color32 color, out int overlay, out int layer, out DrawFlags flags)
-    {
-        color = Color;
-        overlay = Overlay;
-        layer = Layer;
-        flags = Flags;
     }
 }
 

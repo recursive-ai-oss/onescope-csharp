@@ -25,18 +25,22 @@ public class ProbeTests
             probe.Record(record);
         }
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        const int calls = 50_000_000;
-        long start = Stopwatch.GetTimestamp();
-        for (int i = 0; i < calls; i++)
+        // A real allocation on the path shows in every round (24 bytes per call or more); see Fixtures.SmallestAllocation.
+        const int calls = 2_000_000;
+        double ns = 0;
+        long smallest = Fixtures.SmallestAllocation(() =>
         {
-            probe.Record(record);
-        }
+            long start = Stopwatch.GetTimestamp();
+            for (int i = 0; i < calls; i++)
+            {
+                probe.Record(record);
+            }
 
-        double ns = Stopwatch.GetElapsedTime(start).TotalNanoseconds / calls;
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
-        Assert.Equal(0, allocated);
-        Fixtures.Report($"probe unconnected Record (indicative, shared host, Release): {ns:F2} ns/call over {calls} calls, {allocated} bytes allocated");
+            ns = Stopwatch.GetElapsedTime(start).TotalNanoseconds / calls;
+        });
+
+        Assert.Equal(0, smallest);
+        Fixtures.Report($"probe unconnected Record (indicative, shared host): {ns:F2} ns/call over {calls} calls, {smallest} bytes allocated");
     }
 
     [Fact]

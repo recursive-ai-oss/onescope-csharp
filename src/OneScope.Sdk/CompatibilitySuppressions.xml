@@ -1,0 +1,32 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<!-- https://learn.microsoft.com/dotnet/fundamentals/package-validation/diagnostic-ids -->
+<Suppressions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <Suppression>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:OneScope.Sdk.HistoryOptions</Target>
+    <Left>lib/net10.0/RecursiveAI.OneScope.Sdk.dll</Left>
+    <Right>lib/net10.0/RecursiveAI.OneScope.Sdk.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:OneScope.Sdk.DrawStyle.Deconstruct(OneScope.Sdk.Color32@,System.Int32@,System.Int32@,OneScope.Sdk.DrawFlags@)</Target>
+    <Left>lib/net10.0/RecursiveAI.OneScope.Sdk.dll</Left>
+    <Right>lib/net10.0/RecursiveAI.OneScope.Sdk.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:OneScope.Sdk.History.#ctor(OneScope.Sdk.IScopeSource,OneScope.Sdk.HistoryOptions)</Target>
+    <Left>lib/net10.0/RecursiveAI.OneScope.Sdk.dll</Left>
+    <Right>lib/net10.0/RecursiveAI.OneScope.Sdk.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0009</DiagnosticId>
+    <Target>T:OneScope.Sdk.ScopeHistoryOptions</Target>
+    <Left>lib/net10.0/RecursiveAI.OneScope.Sdk.dll</Left>
+    <Right>lib/net10.0/RecursiveAI.OneScope.Sdk.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+</Suppressions>

@@ -350,7 +350,7 @@ internal sealed partial class ShellModel
         Step = Math.Clamp(restored.CursorStep, MinSteps, MaxSteps);
         foreach (SourceSession s in _sources)
         {
-            s.History.Seek(Math.Clamp(Step, s.History.StartStep, s.History.EndStep));
+            s.History.Seek(s.LocalClamped(Step));
         }
 
         if (layout.Present && layout.Views.Count > 0)

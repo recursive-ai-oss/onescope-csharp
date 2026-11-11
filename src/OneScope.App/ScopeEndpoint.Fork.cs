@@ -15,7 +15,7 @@ internal sealed partial class ScopeEndpoint
     {
         RequireSources();
         SourceSession parent = SourceArg(a);
-        long step = a.Long("step") ?? Math.Clamp(_shell.Step, parent.History.StartStep, parent.History.EndStep);
+        long step = a.Long("step") ?? parent.LocalClamped(_shell.Step);
         SourceSession fork = _shell.Fork(parent, step, a.Bool("view") ?? true);
         return JsonOut.Build(w =>
         {

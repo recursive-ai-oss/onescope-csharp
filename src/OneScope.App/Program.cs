@@ -13,7 +13,7 @@ namespace OneScope.App;
 /// <summary>The <c>onescope</c> command.</summary>
 internal static class Program
 {
-    private const string Help = """
+    private static string Help => $$$"""
         onescope: watch a deterministic world. Open a scene, snapshot or replay, scrub its history, inspect it, capture it.
 
         Start the shell
@@ -38,15 +38,13 @@ internal static class Program
           onescope call <operation> [json] --socket <path>
           onescope mcp --socket <path>         stdio MCP bridge for agents
 
-        Operations: open, attach, follow, session_save, session_open, sources, seek, step, play, entities, inspect, overlay, axes, findings, fork,
-                    poke, diff, compare, replay_save, pick, project, view, layout, capture_frame, capture_sequence, plus info, ui_tree, ui_query,
-                    ui_click, window, quit.
+        Operations: {{{string.Join(", ", KnownOps)}}}.
         Results are JSON. Errors are {"ok":false,"error":{"code","message"}} and exit code 1.
         Exit codes: 0 ok, 1 an operation failed, 2 usage, 4 could not run.
         """;
 
-    private static readonly string[] KnownOps =
-        ["open", "attach", "follow", "session_save", "session_open", "sources", "seek", "step", "play", "entities", "inspect", "overlay", "axes", "findings", "fork", "pick", "project", "poke", "diff", "compare", "replay_save", "view", "layout", "capture_frame", "capture_sequence", "info", "ui_tree", "ui_query", "ui_click", "ui_hit", "ui_scale", "input_pointer", "input_key", "input_text", "window", "render_graph", "quit"];
+    internal static readonly string[] KnownOps =
+        ["open", "attach", "follow", "session_save", "session_open", "sources", "seek", "step", "play", "offset", "close", "timeline", "field", "links", "selection", "track", "ghost", "open_real", "diff_shared", "entities", "inspect", "overlay", "axes", "findings", "fork", "pick", "project", "poke", "diff", "compare", "replay_save", "view", "layout", "capture_frame", "capture_sequence", "info", "ui_tree", "ui_query", "ui_click", "ui_hit", "ui_scale", "input_pointer", "input_key", "input_text", "window", "render_graph", "quit"];
 
     internal static int Main(string[] args) => Run(args, Console.Out, Console.Error);
 

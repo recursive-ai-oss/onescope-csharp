@@ -27,5 +27,6 @@
     <Project Path="tools/GenTestData/GenTestData.csproj" />
     <Project Path="tools/GenPhysicsData/GenPhysicsData.csproj" />
     <Project Path="tools/GenPathData/GenPathData.csproj" />
+    <Project Path="tools/ApiList/ApiList.csproj" />
   </Folder>
 </Solution>

@@ -7,5 +7,7 @@
   <ItemGroup>
     <PackageReference Include="RecursiveAI.OnePhysics.Scope" VersionOverride="1.1.0-preview.2" />
     <PackageReference Include="RecursiveAI.OnePhysics" VersionOverride="1.0.0" />
+    <!-- The module packages ask for an older SDK than this repo's; the project reference is the one that is used, as in the app. -->
+    <ProjectReference Include="..\..\src\OneScope.Sdk\OneScope.Sdk.csproj" />
   </ItemGroup>
 </Project>

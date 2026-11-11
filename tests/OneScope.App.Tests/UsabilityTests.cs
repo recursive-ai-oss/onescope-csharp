@@ -486,19 +486,10 @@ public sealed class UsabilityTests
     [Fact]
     public async Task AViewerThatReachesItsCapStopsWithAClearStateAndTheHostIsUnaffected()
     {
-        // The same host run twice: once with no viewer, once with a viewer that hits its cap. Its hashes and its pace are the same.
-        ulong[] baseline;
+        // A host with a viewer that hits its cap keeps its own pace and its own hashes: they equal a straight playback of the same recording.
         string dir = LiveAndSessionTests.NewDir();
-        using (var alone = new MiniHost(dir))
-        {
-            alone.Start();
-            LiveAndSessionTests.WaitFor(() => alone.Steps >= 2500, "the unwatched host");
-            alone.Stop();
-            baseline = alone.Hashes[..(alone.Steps + 1)];
-        }
-
+        using Harness h = new(); // before the host starts: building a shell can take seconds on a machine with several GPUs
         using var host = new MiniHost(dir);
-        using Harness h = new();
         host.Start();
         LiveAndSessionTests.WaitFor(() => host.Steps >= 100, "the host to run");
         const long Cap = 8192;
@@ -518,14 +509,19 @@ public sealed class UsabilityTests
         h.Call("seek", $$"""{"step":{{end}}}""");
         h.Call("fork", $$"""{"step":{{end}},"view":false}""");
 
-        // The host kept stepping after the viewer left, and its hashes are the unwatched run's.
+        // The host kept stepping after the viewer left, and its hashes are a straight playback's.
         int atCap = host.Steps;
-        LiveAndSessionTests.WaitFor(() => host.Steps >= Math.Min(2500, atCap + 400), "the host to carry on");
+        LiveAndSessionTests.WaitFor(() => host.Steps >= atCap + 400, "the host to carry on");
         host.Stop();
-        int common = Math.Min(baseline.Length, host.Steps + 1);
-        Assert.True(common > atCap);
-        Assert.Equal(baseline[..common], host.Hashes[..common]);
-        Harness.Report($"live cap {Cap} bytes: capped at viewer step {end}; host carried on from step {atCap} to {host.Steps}; {common} hashes equal the unwatched run's");
+        int common = host.Steps + 1;
+        var reference = new History(new TestModule.TestModule().Open(File.ReadAllBytes(Harness.Data("test-10000.ostm")), "reference"));
+        for (int step = 0; step < common; step++)
+        {
+            reference.Seek(step);
+            Assert.True(reference.StateHash == host.Hashes[step], $"The host's hash at step {step} differs from a straight playback's.");
+        }
+
+        Harness.Report($"live cap {Cap} bytes: capped at viewer step {end}; host carried on from step {atCap} to {host.Steps}; {common} hashes equal a straight playback's");
         Directory.Delete(dir, true);
     }
 }

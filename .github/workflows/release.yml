@@ -1,0 +1,77 @@
+name: release
+
+# Publishes the four packages when a version tag is pushed. There is no stored API key: nuget.org's trusted publishing
+# exchanges this run's identity for a short-lived key (NuGet/login). The nuget.org account name goes in the NUGET_USER
+# repository variable; docs/releasing.md has the one-time setup.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Tag matches the version in Directory.Build.props
+        shell: bash
+        run: |
+          prefix=$(sed -n 's:.*<VersionPrefix>\(.*\)</VersionPrefix>.*:\1:p' Directory.Build.props)
+          suffix=$(sed -n 's:.*<VersionSuffix>\(.*\)</VersionSuffix>.*:\1:p' Directory.Build.props)
+          version="$prefix${suffix:+-$suffix}"
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::The tag is $GITHUB_REF_NAME but Directory.Build.props says version $version."
+            exit 1
+          fi
+
+      - name: Library packages are on nuget.org
+        shell: bash
+        run: bash tools/check-packages.sh
+
+      - name: Software Vulkan
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mesa-vulkan-drivers libvulkan1
+          echo "VK_DRIVER_FILES=/usr/share/vulkan/icd.d/lvp_icd.json" >> "$GITHUB_ENV"
+
+      - name: Build and test
+        run: |
+          dotnet build OneScope.slnx -c Release
+          dotnet test --project tests/OneScope.Sdk.Tests -c Release --no-build
+          dotnet test --project tests/OneScope.Attach.Tests -c Release --no-build
+          dotnet test --project tests/OneScope.App.Tests -c Release --no-build
+
+      - name: Pack
+        run: |
+          dotnet pack src/OneScope.Sdk -c Release --no-build
+          dotnet pack src/OneScope.Probe -c Release --no-build
+          dotnet pack src/OneScope.Attach -c Release --no-build
+          dotnet pack src/OneScope.App -c Release --no-build
+          ls artifacts/pack
+
+      - name: Short-lived nuget.org key from trusted publishing
+        uses: NuGet/login@v1
+        id: login
+        with:
+          user: ${{ vars.NUGET_USER }}
+
+      - name: Push
+        run: >
+          dotnet nuget push "artifacts/pack/*.nupkg"
+          --api-key "${{ steps.login.outputs.NUGET_API_KEY }}"
+          --source https://api.nuget.org/v3/index.json
+          --skip-duplicate

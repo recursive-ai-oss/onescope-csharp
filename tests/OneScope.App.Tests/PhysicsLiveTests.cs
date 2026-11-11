@@ -86,7 +86,7 @@ internal sealed class PhysicsHostThread : IDisposable
                 Hashes[count] = hash;
             }
 
-            Thread.Sleep(2);
+            Thread.Sleep(5);
         }
     }
 
@@ -127,7 +127,8 @@ public sealed class PhysicsLiveTests
             using var host = new PhysicsHostThread(three, 300, dir);
             using Harness h = new Harness(bundled: true);
             host.Start();
-            await Task.Delay(150, TestContext.Current.CancellationToken);
+            // Wait for the host to be stepping, not for a fixed time: building a 3D world can take longer than that on a busy machine.
+            LiveAndSessionTests.WaitFor(() => { lock (host.Hashes) { return host.Hashes.Count >= 20; } }, "the host to step");
             JsonElement attached = await Task.Run(() => h.Call("attach", JsonSerializer.Serialize(new { socket = host.SocketPath, wait = 10000 })), TestContext.Current.CancellationToken);
             long start = attached.GetProperty("startStep").GetInt64();
             Assert.True(start > 1, "the attach should land mid-run");

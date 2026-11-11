@@ -19,7 +19,7 @@ internal sealed class PokePanel
     private readonly Action<Action> _run;
     private readonly Dictionary<string, string> _fields = [];
     private readonly List<PokeRow> _rows = [];
-    private (int Source, int Count) _rowsKey = (-1, -1);
+    private (int Source, int Count, int Epoch) _rowsKey = (-1, -1, -1);
 
     /// <summary>One declared poke of one fork.</summary>
     private readonly record struct PokeRow(int Source, PokeInfo Poke);
@@ -61,7 +61,7 @@ internal sealed class PokePanel
     private IReadOnlyList<PokeRow> Rows()
     {
         int active = Math.Min(_shell.ActiveSource, _shell.Sources.Count - 1);
-        var key = (active, _shell.Sources.Count);
+        var key = (active, _shell.Sources.Count, _shell.SourceEpoch);
         if (key != _rowsKey)
         {
             _rowsKey = key;

@@ -19,7 +19,13 @@ internal sealed class MiniHost : ISnapshotSource, IDisposable
     private volatile bool _stop;
     private int _steps;
 
-    public MiniHost(string dir, int stepMicros = 300)
+    /// <param name="dir">Where the probe's socket goes.</param>
+    /// <param name="stepMicros">
+    /// The pause after each step, rounded down to whole milliseconds because Thread.Sleep has no finer unit: anything under 1000 is no pause at all.
+    /// The default is 1 ms a step, so the 10,000-step recording lasts longer than any test needs a viewer to arrive in. A host that runs
+    /// flat out can finish before a slow machine has attached, and a finished host never serves the snapshot a viewer is waiting for.
+    /// </param>
+    public MiniHost(string dir, int stepMicros = 1000)
     {
         _world = (TestWorld)_source.CreateWorld();
         Hashes = new ulong[_source.Recording.StepCount + 1];
@@ -34,7 +40,7 @@ internal sealed class MiniHost : ISnapshotSource, IDisposable
                 _probe.Record(_source.Recording.InputAt(_steps).Span);
                 Hashes[_steps + 1] = _world.Hash();
                 Interlocked.Increment(ref _steps);
-                Thread.Sleep(TimeSpan.FromMicroseconds(stepMicros));
+                Thread.Sleep(stepMicros / 1000);
             }
         }) { IsBackground = true };
     }
@@ -196,8 +202,9 @@ public sealed class LiveAndSessionTests
         host.Start();
         WaitFor(() => host.Steps >= 300, "the host to run");
         await Task.Run(() => h.Call("attach", JsonSerializer.Serialize(new { socket = host.SocketPath, wait = 10000 })));
-        host.Dispose();
         SourceSession live = h.Shell.Sources[0];
+        WaitFor(() => { h.Shell.PumpLive(); return live.History.EndStep > live.History.StartStep; }, "a record to arrive");
+        host.Dispose();
         WaitFor(() => { h.Shell.PumpLive(); return live.LiveEnded is not null; }, "the stream to end");
         JsonElement sources = h.Call("sources");
         JsonElement state = sources.GetProperty("sources")[0].GetProperty("live");
