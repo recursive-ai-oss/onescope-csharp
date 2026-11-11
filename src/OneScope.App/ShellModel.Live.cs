@@ -17,54 +17,128 @@ internal sealed partial class ShellModel
     /// <summary>Lists the running probes (and removes the sockets of programs that are gone).</summary>
     public ProbeListing ListProbes() => ProbeFinder.List(ProbeDir);
 
+    /// <summary>The default for how long an attach waits for a host's snapshot before giving up: a host that steps rarely still gets there.</summary>
+    public const int DefaultAttachTimeoutMilliseconds = 30_000;
+
+    private readonly List<PendingAttach> _attaches = [];
+    private int _nextAttach = 1;
+    private bool _liveClosed;
+
+    /// <summary>Attaches that are connecting or have failed (the last few), oldest first. A finished attach becomes a source and leaves the list.</summary>
+    public IReadOnlyList<PendingAttach> Attaches => _attaches;
+
     /// <summary>
-    /// Connects to a probe by its process id or its socket path, makes the stream a source and, with following on, puts the shared cursor at
-    /// the host's newest step.
+    /// Starts connecting to a probe by its process id or its socket path on a worker thread and returns at once, so the window keeps drawing while the
+    /// host takes its snapshot. <see cref="PumpLive"/> turns a finished connection into a source; <see cref="PendingAttach.Task"/> completes when it is ready.
     /// </summary>
-    /// <exception cref="ControlException"><c>not_found</c> (no such probe or nothing listening), <c>timeout</c>, <c>bad_stream</c> (not a probe, or malformed bytes),
-    /// <c>no_module</c>, <c>bad_format</c> (the module rejected the snapshot).</exception>
-    public SourceSession AttachLive(int? pid, string? socket, int keyframeInterval)
+    public PendingAttach BeginAttach(int? pid, string? socket, int keyframeInterval, long maxRecordBytes, int timeoutMilliseconds)
+    {
+        var options = new ScopeHistoryOptions { KeyframeInterval = keyframeInterval > 0 ? keyframeInterval : ScopeHistoryOptions.DefaultKeyframeInterval };
+        IScopeModule[] modules = [.. _modules];
+        string? dir = ProbeDir;
+        string target = socket is not null ? Path.GetFullPath(socket) : $"pid {pid}";
+        Task<LiveSession> task = Task.Run(() => ConnectCore(pid, socket is null ? null : Path.GetFullPath(socket), dir, modules, options, maxRecordBytes, timeoutMilliseconds));
+        var pending = new PendingAttach(_nextAttach++, target, options.KeyframeInterval, task);
+        _attaches.Add(pending);
+        while (_attaches.Count(x => x.State == "failed") > 8)
+        {
+            _attaches.Remove(_attaches.First(x => x.State == "failed"));
+        }
+
+        Touch();
+        return pending;
+    }
+
+    // Runs on a worker thread: touches no shell state.
+    private static LiveSession ConnectCore(int? pid, string? socketPath, string? dir, IScopeModule[] modules, ScopeHistoryOptions options, long maxRecordBytes, int timeoutMilliseconds)
     {
         string path;
-        if (socket is not null)
+        if (socketPath is not null)
         {
-            path = Path.GetFullPath(socket);
+            path = socketPath;
         }
         else
         {
-            ProbeEntry? entry = ListProbes().Running.FirstOrDefault(e => e.ProcessId == pid);
+            ProbeEntry? entry = ProbeFinder.List(dir).Running.FirstOrDefault(e => e.ProcessId == pid);
             path = entry?.SocketPath ?? throw new ControlException("not_found", $"No running probe belongs to process {pid}; list the probes with attach and no arguments.");
         }
 
-        var options = new ScopeHistoryOptions { KeyframeInterval = keyframeInterval > 0 ? keyframeInterval : ScopeHistoryOptions.DefaultKeyframeInterval };
-        LiveSession live;
         try
         {
             ProbeHandshake hello = ProbeFinder.ReadHandshake(path);
-            if (!_modules.Any(m => m.Id == hello.Info.ModuleId))
+            if (!modules.Any(m => m.Id == hello.Info.ModuleId))
             {
                 throw new ControlException("no_module", $"'{path}' streams module '{hello.Info.ModuleId}' (library {hello.Info.LibraryVersion}), and no loaded module has that id; load one with --module <assembly>.");
             }
 
-            live = LiveSession.Connect(path, _modules, options);
+            return LiveSession.Connect(path, modules, options, null, maxRecordBytes, timeoutMilliseconds);
         }
         catch (Exception ex) when (ex is SocketException or IOException or OperationCanceledException or ProbeFormatException or ScopeFormatException or ArgumentException or UnauthorizedAccessException)
         {
             throw AttachError(path, ex);
         }
+    }
 
-        IScopeModule module = _modules.First(m => m.Id == live.Handshake.Info.ModuleId);
-        var session = new SourceSession(_sources.Count, path, module, live.History.Source, live.History, options.KeyframeInterval, live: live) { Label = live.Name };
-        AddSession(session);
-        AddLog(session.Index, "shell", $"attached to {live.Name} (host step {live.History.StartStep}, library {live.Handshake.Info.LibraryVersion})");
-        if (session.Follow)
+    /// <summary>
+    /// Turns attaches whose connection has finished into sources (or into a failed entry with its error, also written to the event log).
+    /// Runs on the thread that owns the histories. Returns true when anything changed.
+    /// </summary>
+    public bool CompleteAttaches()
+    {
+        bool changed = false;
+        foreach (PendingAttach p in _attaches.ToArray())
         {
-            SeekCore(session.History.EndStep);
+            if (p.State != "connecting" || !p.Task.IsCompleted)
+            {
+                continue;
+            }
+
+            changed = true;
+            if (p.Task.IsCompletedSuccessfully)
+            {
+                if (_liveClosed)
+                {
+                    p.Task.Result.Dispose();
+                    p.State = "failed";
+                    p.ErrorCode = "closed";
+                    p.Error = "the shell closed before the attach finished";
+                    continue;
+                }
+
+                LiveSession live = p.Task.Result;
+                IScopeModule module = _modules.First(m => m.Id == live.Handshake.Info.ModuleId);
+                var session = new SourceSession(_sources.Count, p.Target, module, live.History.Source, live.History, p.KeyframeInterval, live: live) { Label = live.Name };
+                AddSession(session);
+                AddLog(session.Index, "shell", $"attached to {live.Name} (host step {live.History.StartStep}, library {live.Handshake.Info.LibraryVersion})");
+                if (session.Follow)
+                {
+                    SeekCore(session.History.EndStep);
+                }
+
+                p.State = "attached";
+                p.Source = session;
+                _attaches.Remove(p);
+            }
+            else
+            {
+                Exception ex = p.Task.Exception!.GetBaseException();
+                p.State = "failed";
+                p.ErrorCode = ex is ControlException c ? c.Code : "not_found";
+                p.Error = ex.Message;
+                AddLog(Math.Min(ActiveSource, Math.Max(_sources.Count - 1, 0)), "error", $"attach to {p.Target} failed ({p.ErrorCode}): {p.Error}");
+            }
         }
 
-        Touch();
-        return session;
+        if (changed)
+        {
+            Touch();
+        }
+
+        return changed;
     }
+
+    /// <summary>Forgets a failed attach after its error was handed to the caller.</summary>
+    public void Dismiss(PendingAttach attach) => _attaches.Remove(attach);
 
     private static ControlException AttachError(string path, Exception ex) => ex switch
     {
@@ -85,7 +159,7 @@ internal sealed partial class ShellModel
     /// </summary>
     public bool PumpLive()
     {
-        bool changed = false;
+        bool changed = CompleteAttaches();
         long follow = -1;
         foreach (SourceSession s in _sources)
         {
@@ -115,6 +189,14 @@ internal sealed partial class ShellModel
                 {
                     follow = Math.Max(follow, s.History.EndStep);
                 }
+            }
+
+            if (live.Capped && s.LiveEnded is null)
+            {
+                s.LiveCapped = true;
+                s.LiveEnded = $"the viewer reached its live cap of {live.MaxRecordBytes} bytes at step {s.History.EndStep}; the program is not affected, and what was received stays usable";
+                AddLog(s.Index, "error", $"{s.Label}: {s.LiveEnded}");
+                changed = true;
             }
 
             if (s.LiveEnded is null && n == 0 && live.State != ClientState.Streaming)
@@ -166,9 +248,45 @@ internal sealed partial class ShellModel
     /// <summary>Closes every live connection; the histories keep what was received.</summary>
     public void CloseLive()
     {
+        _liveClosed = true;
+        foreach (PendingAttach p in _attaches)
+        {
+            if (p.State == "connecting")
+            {
+                // A connection that finishes after the shell is gone must not leave a reader thread behind.
+                _ = p.Task.ContinueWith(static t => t.Result.Dispose(), System.Threading.CancellationToken.None, TaskContinuationOptions.OnlyOnRanToCompletion, TaskScheduler.Default);
+            }
+        }
+
         foreach (SourceSession s in _sources)
         {
             s.Live?.Dispose();
         }
     }
+}
+
+/// <summary>An attach in progress or failed: what was asked, where it stands and why it failed.</summary>
+internal sealed class PendingAttach(int id, string target, int keyframeInterval, Task<LiveSession> task)
+{
+    public int Id { get; } = id;
+
+    /// <summary>The socket path, or "pid N" until the pid is resolved.</summary>
+    public string Target { get; } = target;
+
+    public int KeyframeInterval { get; } = keyframeInterval;
+
+    public Task<LiveSession> Task { get; } = task;
+
+    /// <summary><c>connecting</c>, <c>failed</c> or <c>attached</c>.</summary>
+    public string State { get; set; } = "connecting";
+
+    public string? Error { get; set; }
+
+    public string? ErrorCode { get; set; }
+
+    /// <summary>The source it became, once attached.</summary>
+    public SourceSession? Source { get; set; }
+
+    /// <summary>The onegame frame number when the attach began; with the current frame it shows the window kept presenting while the attach waited.</summary>
+    public long StartFrame { get; set; }
 }

@@ -264,6 +264,11 @@ internal sealed partial class ScopeEndpoint
                     _shell.FrameView(view);
                 }
 
+                if (a.Bool("frameSelection") == true)
+                {
+                    _shell.FrameView(view, selection: true);
+                }
+
                 if (a.Bool("active") == true)
                 {
                     _shell.ActiveView = index;
@@ -338,5 +343,57 @@ internal sealed partial class ScopeEndpoint
         {
             throw new ControlException("no_source", "No source is open; call open first.");
         }
+    }
+
+    private string TimelineOp(Args a)
+    {
+        RequireSources();
+        if (a.String("fit") is string fit)
+        {
+            switch (fit)
+            {
+                case "all":
+                    _shell.FitTimelineAll();
+                    break;
+                case "fork":
+                    SourceSession s = SourceArg(a);
+                    SourceSession fork = s.IsFork
+                        ? s
+                        : _shell.Sources.LastOrDefault(x => x.IsFork && ReferenceEquals(x.Root, s))
+                            ?? throw new ControlException("not_found", $"Source {s.Index} has no fork to fit; fork it first.");
+                    _shell.FitTimelineFork(fork);
+                    break;
+                default:
+                    throw new ControlException("bad_args", "Argument 'fit' must be \"all\" or \"fork\".");
+            }
+        }
+        else if (a.Has("from") || a.Has("to"))
+        {
+            TimeRange now = _shell.TimelineRange;
+            _shell.SetTimelineWindow(a.Long("from") ?? now.Min, a.Long("to") ?? now.Max);
+        }
+
+        if (a.Double("zoom") is double zoom)
+        {
+            _shell.ZoomTimeline(zoom, a.Long("center") ?? Math.Clamp(_shell.Step, _shell.TimelineRange.Min, _shell.TimelineRange.Max));
+        }
+
+        if (a.Long("pan") is long pan)
+        {
+            _shell.PanTimeline(pan);
+        }
+
+        TimeRange r = _shell.TimelineRange;
+        return JsonOut.Build(w =>
+        {
+            w.WriteStartObject();
+            w.WriteNumber("from", r.Min);
+            w.WriteNumber("to", r.Max);
+            w.WriteBoolean("zoomed", _shell.TimelineZoomed);
+            w.WriteNumber("axisFrom", _shell.MinSteps);
+            w.WriteNumber("axisTo", _shell.MaxSteps);
+            w.WriteNumber("step", _shell.Step);
+            w.WriteEndObject();
+        });
     }
 }

@@ -66,6 +66,15 @@ internal sealed partial class ScopeEndpoint
             }
 
             w.WriteEndArray();
+            w.WriteStartArray("attaching");
+            foreach (PendingAttach p in _shell.Attaches)
+            {
+                w.WriteStartObject();
+                WritePending(w, p);
+                w.WriteEndObject();
+            }
+
+            w.WriteEndArray();
             w.WriteEndObject();
         });
     }
@@ -78,7 +87,7 @@ internal sealed partial class ScopeEndpoint
         }
 
         w.WriteStartObject("live");
-        w.WriteString("state", s.LiveEnded is null ? "streaming" : live.State.ToString().ToLowerInvariant());
+        w.WriteString("state", s.LiveEnded is null ? "streaming" : s.LiveCapped ? "capped" : live.State.ToString().ToLowerInvariant());
         if (s.LiveEnded is not null)
         {
             w.WriteString("endedBecause", s.LiveEnded);
@@ -90,6 +99,8 @@ internal sealed partial class ScopeEndpoint
         w.WriteNumber("format", live.Handshake.Info.FormatVersion);
         w.WriteNumber("firstStep", s.History.StartStep);
         w.WriteNumber("newestStep", s.History.EndStep);
+        w.WriteNumber("recordBytes", live.RecordBytes);
+        w.WriteNumber("capBytes", live.MaxRecordBytes);
         w.WriteEndObject();
     }
 
@@ -154,7 +165,47 @@ internal sealed partial class ScopeEndpoint
             });
         }
 
-        SourceSession s = _shell.AttachLive(pid, socket, a.Int("keyframeInterval") ?? 0);
+        int wait = a.Int("wait") ?? 100;
+        int timeout = a.Int("timeout") ?? ShellModel.DefaultAttachTimeoutMilliseconds;
+        long cap = a.Long("capBytes") ?? LiveSession.DefaultMaxRecordBytes;
+        if (wait is < 0 or > 120_000 || timeout is < 100 or > 600_000 || cap < 1024)
+        {
+            throw new ControlException("bad_args", "Arguments must satisfy: wait 0 to 120000 ms, timeout 100 to 600000 ms, capBytes at least 1024.");
+        }
+
+        PendingAttach pending = _shell.BeginAttach(pid, socket, a.Int("keyframeInterval") ?? 0, cap, timeout);
+        pending.StartFrame = _game.Frame;
+
+        // The shell thread waits only as long as the caller allows, so a window keeps drawing while a slow host takes its snapshot.
+        if (wait > 0)
+        {
+            try
+            {
+                pending.Task.Wait(wait);
+            }
+            catch (AggregateException)
+            {
+                // A failed connection is reported below by CompleteAttaches, with its typed error.
+            }
+        }
+
+        _shell.CompleteAttaches();
+        if (pending.State == "failed")
+        {
+            _shell.Dismiss(pending);
+            throw new ControlException(pending.ErrorCode ?? "not_found", pending.Error ?? "The attach failed.");
+        }
+
+        if (pending.Source is not { } s)
+        {
+            return JsonOut.Build(w =>
+            {
+                w.WriteStartObject();
+                WritePending(w, pending);
+                w.WriteEndObject();
+            });
+        }
+
         return JsonOut.Build(w =>
         {
             w.WriteStartObject();
@@ -166,6 +217,21 @@ internal sealed partial class ScopeEndpoint
             w.WriteNumber("views", _shell.Views.Count);
             w.WriteEndObject();
         });
+    }
+
+    /// <summary>An attach that has not become a source: still connecting (the host has not recorded a step yet) or failed.</summary>
+    private void WritePending(Utf8JsonWriter w, PendingAttach p)
+    {
+        w.WriteNumber("attach", p.Id);
+        w.WriteString("state", p.State);
+        w.WriteString("target", p.Target);
+        w.WriteNumber("startFrame", p.StartFrame);
+        w.WriteNumber("frame", _game.Frame);
+        if (p.Error is not null)
+        {
+            w.WriteString("errorCode", p.ErrorCode);
+            w.WriteString("error", p.Error);
+        }
     }
 
     private string Follow(Args a)
