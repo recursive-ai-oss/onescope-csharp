@@ -3,12 +3,20 @@
     <Project Path="src/OneScope.Sdk/OneScope.Sdk.csproj" />
     <Project Path="src/OneScope.Probe/OneScope.Probe.csproj" />
     <Project Path="src/OneScope.App/OneScope.App.csproj" />
+    <Project Path="src/OneScope.Attach/OneScope.Attach.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/OneScope.TestModule/OneScope.TestModule.csproj" />
     <Project Path="tests/OneScope.Sdk.Tests/OneScope.Sdk.Tests.csproj" />
     <Project Path="tests/OneScope.App.Tests/OneScope.App.Tests.csproj" />
+    <Project Path="tests/OneScope.Attach.Tests/OneScope.Attach.Tests.csproj" />
     <Project Path="tests/AotSmoke/AotSmoke.csproj" />
+  </Folder>
+  <Folder Name="/samples/">
+    <Project Path="samples/ProbeSample/ProbeSample.csproj" />
+  </Folder>
+  <Folder Name="/fuzz/">
+    <Project Path="fuzz/AttachFuzz/AttachFuzz.csproj" />
   </Folder>
   <Folder Name="/tools/">
     <Project Path="tools/GenTestData/GenTestData.csproj" />

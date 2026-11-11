@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>$(OneScopeRootNamespace).Fuzz</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <!-- SharpFuzz instruments the built assemblies in place, so the targets are copied next to the harness. -->
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="SharpFuzz" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\OneScope.Sdk\OneScope.Sdk.csproj" />
+    <ProjectReference Include="..\..\src\OneScope.Probe\OneScope.Probe.csproj" />
+    <ProjectReference Include="..\..\src\OneScope.Attach\OneScope.Attach.csproj" />
+    <ProjectReference Include="..\..\tests\OneScope.TestModule\OneScope.TestModule.csproj" />
+  </ItemGroup>
+</Project>

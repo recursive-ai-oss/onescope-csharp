@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk.WebAssembly">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>$(OneScopeRootNamespace).WasmSmoke</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <WasmMainJSPath>main.mjs</WasmMainJSPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\OneScope.Sdk\OneScope.Sdk.csproj" />
+    <ProjectReference Include="..\..\src\OneScope.Probe\OneScope.Probe.csproj" />
+    <ProjectReference Include="..\OneScope.TestModule\OneScope.TestModule.csproj" />
+  </ItemGroup>
+</Project>

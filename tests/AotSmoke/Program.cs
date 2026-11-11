@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.Numerics;
+using OneScope.Attach;
 using OneScope.Probe;
 using OneScope.Sdk;
 using OneScope.TestModule;
@@ -50,13 +51,89 @@ IScopeSource reopened = module.Open(writer.WrittenMemory, "fork");
 using ScopeProbe probe = ScopeProbe.Attach(new ProbeInfo(TestFormat.ModuleId, "0", 1), new NoSnapshot());
 probe.Record(writer.WrittenSpan);
 
+// Live attach over a real socket, then a session file round trip.
+string socketDir = Path.Combine(Path.GetTempPath(), "osp-aot-" + Environment.ProcessId);
+var live = new WorldSnapshots(source.Recording.Setup);
+using (ScopeProbe hostProbe = ScopeProbe.Attach(new ProbeInfo(TestFormat.ModuleId, "1", TestFormat.Version), live, new ProbeOptions { Directory = socketDir }))
+{
+    if (!hostProbe.IsListening || ProbeFinder.List(socketDir).Running.Count != 1)
+    {
+        Console.WriteLine("probe not listed");
+        return 1;
+    }
+
+    string socketPath = hostProbe.SocketPath!;
+    LiveSession? session = null;
+    Task connect = Task.Run(() => session = LiveSession.Connect(socketPath, [module]));
+    while (!hostProbe.IsConnected)
+    {
+        hostProbe.Poll();
+        Thread.Sleep(1);
+    }
+
+    for (int s = 0; s < 200; s++)
+    {
+        live.World.Advance(source.Recording.InputAt(s).Span, TimelineSink.None);
+        hostProbe.Record(source.Recording.InputAt(s).Span);
+    }
+
+    connect.Wait();
+    using LiveSession viewer = session!;
+    while (viewer.History.StepCount < 200)
+    {
+        _ = viewer.Pump();
+        Thread.Sleep(1);
+    }
+
+    viewer.History.Seek(200);
+    if (viewer.History.StateHash != live.World.Hash())
+    {
+        Console.WriteLine("live hash mismatch");
+        return 1;
+    }
+}
+
+var sessionFile = new SessionFile { CursorStep = 5 };
+sessionFile.Sources.Add(SessionSource.Embed(source));
+var sessionBytes = new ArrayBufferWriter<byte>();
+sessionFile.Write(sessionBytes);
+var sessionAgain = new ArrayBufferWriter<byte>();
+SessionFile.Parse(sessionBytes.WrittenMemory, "smoke.oscope").Write(sessionAgain);
+if (!sessionAgain.WrittenSpan.SequenceEqual(sessionBytes.WrittenSpan))
+{
+    Console.WriteLine("session round trip differs");
+    return 1;
+}
+
+Directory.Delete(socketDir, true);
+
 history.Scan();
-Console.WriteLine($"ok items={list.Items.Length} diff={diff.Value.Field} findings={history.Findings.Count} fork={reopened.Recording.StepCount} connected={probe.IsConnected}");
+Console.WriteLine($"ok items={list.Items.Length} diff={diff.Value.Field} findings={history.Findings.Count} fork={reopened.Recording.StepCount} connected={probe.IsConnected} live-attach=ok session-roundtrip=ok");
 return 0;
 
 internal sealed class NoSnapshot : ISnapshotSource
 {
     public void WriteSnapshot(IBufferWriter<byte> writer)
     {
+    }
+}
+
+internal sealed class WorldSnapshots : ISnapshotSource
+{
+    private readonly ReadOnlyMemory<byte> _setup;
+
+    public WorldSnapshots(ReadOnlyMemory<byte> setup)
+    {
+        _setup = setup;
+        World = new TestWorld(setup.Span);
+    }
+
+    public TestWorld World { get; }
+
+    public void WriteSnapshot(IBufferWriter<byte> writer)
+    {
+        _setup.Span.CopyTo(writer.GetSpan(_setup.Length));
+        writer.Advance(_setup.Length);
+        World.WriteSnapshot(writer);
     }
 }
