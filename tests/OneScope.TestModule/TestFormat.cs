@@ -6,8 +6,8 @@ namespace OneScope.TestModule;
 
 /// <summary>
 /// The test module's replay file (little endian):
-/// magic "OSTM", u16 version (1), u16 flags (bit 0: hash rows present), u32 setup length (6),
-/// setup (u8 dimensions 2|3, u8 body count 1..64, u32 seed), u32 step count,
+/// magic "OSTM", u16 version (1), u16 flags (bit 0: hash rows present, bit 2: a link block follows the setup), u32 setup length (6, or 10 with a link block),
+/// setup (u8 dimensions 2|3, u8 body count 1..64, u32 seed; with a link block also u8 role (1 sends a body, 2 receives it, 3 declares the scalar fields), u8 body, u16 transfer step), u32 step count,
 /// then if flag bit 1 a u32 length and a start snapshot (the world's snapshot at the host step the stream began at; its first 8 bytes are that step, the recording's start step), then if flag bit 0 (step count + 1) u64 world hashes (row i is the hash at the start step + i),
 /// then per step u16 input length and that many bytes.
 /// </summary>
@@ -24,6 +24,9 @@ public static class TestFormat
 
     /// <summary>Setup length in bytes.</summary>
     public const int SetupLength = 6;
+
+    /// <summary>Setup length in bytes when the setup carries a link block (a body handed from one test world to another).</summary>
+    public const int LinkedSetupLength = 10;
 
     /// <summary>Most steps a file may declare.</summary>
     public const uint MaxSteps = 1 << 24;
@@ -52,18 +55,19 @@ public static class TestFormat
         }
 
         ushort flags = ReadU16(s, ref pos, name, "flags");
-        if ((flags & ~3) != 0)
+        if ((flags & ~7) != 0)
         {
-            throw new ScopeFormatException(name, $"expected flags 0 to 3 at offset 6, found {flags}.");
+            throw new ScopeFormatException(name, $"expected flags 0 to 7 at offset 6, found {flags}.");
         }
 
         uint setupLen = ReadU32(s, ref pos, name, "setup length");
-        if (setupLen != SetupLength)
+        int expectedSetup = (flags & 4) != 0 ? LinkedSetupLength : SetupLength;
+        if (setupLen != expectedSetup)
         {
-            throw new ScopeFormatException(name, $"expected setup length {SetupLength} at offset 8, found {setupLen}.");
+            throw new ScopeFormatException(name, $"expected setup length {expectedSetup} at offset 8, found {setupLen}.");
         }
 
-        byte[] setup = Take(s, ref pos, SetupLength, name, "setup").ToArray();
+        byte[] setup = Take(s, ref pos, expectedSetup, name, "setup").ToArray();
         ValidateSetup(setup, name);
         uint count = ReadU32(s, ref pos, name, "step count");
         if (count > MaxSteps)
@@ -142,7 +146,7 @@ public static class TestFormat
         pos = 4;
         BinaryPrimitives.WriteUInt16LittleEndian(o[pos..], Version);
         pos += 2;
-        BinaryPrimitives.WriteUInt16LittleEndian(o[pos..], (ushort)((hashes is null ? 0 : 1) | (baseSnapshot is null ? 0 : 2)));
+        BinaryPrimitives.WriteUInt16LittleEndian(o[pos..], (ushort)((hashes is null ? 0 : 1) | (baseSnapshot is null ? 0 : 2) | (setup.Length == LinkedSetupLength ? 4 : 0)));
         pos += 2;
         BinaryPrimitives.WriteUInt32LittleEndian(o[pos..], (uint)setup.Length);
         pos += 4;
@@ -190,8 +194,47 @@ public static class TestFormat
         return setup;
     }
 
+    /// <summary>
+    /// Builds a setup whose world takes part in a transfer: the sender (role 1) loses body <paramref name="body"/> at step <paramref name="step"/>,
+    /// the receiver (role 2) gains it there. Both worlds use the same seed and body count, so the body has the same id in both.
+    /// </summary>
+    public static byte[] MakeLinkedSetup(int dimensions, int bodies, uint seed, int role, int body, int step)
+    {
+        var setup = new byte[LinkedSetupLength];
+        MakeSetup(dimensions, bodies, seed).CopyTo(setup, 0);
+        setup[6] = (byte)role;
+        setup[7] = (byte)body;
+        BinaryPrimitives.WriteUInt16LittleEndian(setup.AsSpan(8), (ushort)step);
+        ValidateSetup(setup, "setup");
+        return setup;
+    }
+
+    /// <summary>
+    /// Builds a setup for a world that declares the two scalar fields and their overlays (a plain setup does not, so the shell's existing views are unchanged).
+    /// </summary>
+    public static byte[] MakeFieldSetup(int dimensions, int bodies, uint seed)
+    {
+        var setup = new byte[LinkedSetupLength];
+        MakeSetup(dimensions, bodies, seed).CopyTo(setup, 0);
+        setup[6] = 3;
+        ValidateSetup(setup, "setup");
+        return setup;
+    }
+
     internal static void ValidateSetup(ReadOnlySpan<byte> setup, string name)
     {
+        if (setup.Length == LinkedSetupLength)
+        {
+            if (setup[6] is not (1 or 2 or 3) || (setup[6] != 3 && setup[7] >= setup[1]))
+            {
+                throw new ScopeFormatException(name, $"expected a role 1, 2 or 3 and, for roles 1 and 2, a body below the body count at offset 6, found role {setup[6]}, body {setup[7]}.");
+            }
+        }
+        else if (setup.Length != SetupLength)
+        {
+            throw new ScopeFormatException(name, $"expected a setup of {SetupLength} or {LinkedSetupLength} bytes, found {setup.Length}.");
+        }
+
         if (setup[0] is not (2 or 3))
         {
             throw new ScopeFormatException(name, $"expected dimensions 2 or 3 in the setup, found {setup[0]}.");

@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Numerics;
 
 namespace OneScope.Sdk;
 
@@ -102,4 +103,45 @@ public interface IScopeWorld
     /// </summary>
     /// <exception cref="ArgumentException"><paramref name="other"/> is from a different module.</exception>
     Difference? FirstDifference(IScopeWorld other);
+
+    /// <summary>
+    /// Reads a declared field (see <see cref="SourceInfo.Fields"/>) at an entity: the value the field has where that entity is.
+    /// The shell's <c>field</c> operation calls this, so it must agree with the values the module draws.
+    /// The default knows no field.
+    /// </summary>
+    /// <param name="field">A <see cref="FieldInfo.Id"/> the source declared.</param>
+    /// <param name="entity">An entity of this world.</param>
+    /// <param name="value">The value, when the method returns true.</param>
+    /// <returns>False when the field or the entity is unknown, or the field has no value there.</returns>
+    bool TryReadField(string field, EntityId entity, out double value)
+    {
+        value = 0;
+        return false;
+    }
+
+    /// <summary>Reads a declared field at a point in the source's length unit (Z is zero in a 2D source). Same contract as <see cref="TryReadField"/>; false outside the field's extent.</summary>
+    bool TryReadFieldAt(string field, Vector3 point, out double value)
+    {
+        value = 0;
+        return false;
+    }
+
+    /// <summary>
+    /// Clears <paramref name="into"/> and fills it with the transfers this world knows about (see <see cref="EntityLink"/>), at its current step.
+    /// A world may list a link before its step is reached when it already knows it (a recording), or only once it has happened (a live stream).
+    /// The default lists none.
+    /// </summary>
+    void CollectLinks(List<EntityLink> into)
+    {
+        ArgumentNullException.ThrowIfNull(into);
+        into.Clear();
+    }
+
+    /// <summary>
+    /// Compares only the entities this world and <paramref name="other"/> both hold, as paired by <paramref name="map"/>: a partial world
+    /// (a client's interest-limited copy) against a whole one. The default compares the inspector rows (see <see cref="SharedDiff"/>);
+    /// a module may override it with a faster comparison that reports the same entities and fields.
+    /// </summary>
+    /// <exception cref="ArgumentException"><paramref name="other"/> is from a different module.</exception>
+    SharedDifference CompareShared(IScopeWorld other, EntityMap map) => SharedDiff.Compare(this, other, map);
 }

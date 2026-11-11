@@ -89,6 +89,7 @@ internal sealed partial class ShellModel
             w.WriteNumber("distance", v.Distance);
             w.WriteNumber("yaw", v.Yaw);
             w.WriteNumber("pitch", v.Pitch);
+            WriteViewExtras(w, v);
             w.WriteEndObject();
         }
 
@@ -230,6 +231,7 @@ internal sealed partial class ShellModel
             Yaw = Finite(v, "yaw", 35, input),
             Pitch = Math.Clamp(Finite(v, "pitch", 25, input), -89, 89),
         };
+        ReadViewExtras(v, view);
         if (v.TryGetProperty("target", out JsonElement t) && t.ValueKind == JsonValueKind.Array && t.GetArrayLength() == 3)
         {
             float[] c = new float[3];
@@ -353,6 +355,7 @@ internal sealed partial class ShellModel
         if (layout.Present && layout.Views.Count > 0)
         {
             _views.AddRange(layout.Views);
+            ResolveGhosts();
         }
         else
         {

@@ -18,6 +18,7 @@
   <ItemGroup>
     <None Include="..\..\testdata\physics-*.*" Link="testdata\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\testdata\*.ostm" Link="testdata\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\testdata\*.ospc" Link="testdata\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <None Include="goldens\*.png" Link="goldens\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

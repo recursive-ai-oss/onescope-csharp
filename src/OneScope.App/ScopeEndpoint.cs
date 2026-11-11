@@ -84,6 +84,8 @@ internal sealed partial class ScopeEndpoint : IControlEndpoint, IDisposable
         Add("capture_sequence", "Capture count PNGs into dir, stepping the cursor by stride (along axis) between frames. Writes frame-NNNN.png and manifest.json with each frame's step, world hash and sha256.",
             """{"type":"object","properties":{"dir":{"type":"string"},"count":{"type":"integer","minimum":1,"maximum":3600},"stride":{"type":"integer","minimum":1},"axis":{"type":"string"},"source":{"type":"integer"},"size":{"type":"string"},"scale":{"type":"number"},"view":{"type":"integer"}},"required":["dir","count"]}""", true, CaptureSequence);
 
+        ContractOps.Register(_shell, Add);
+
         foreach (string name in Forwarded)
         {
             ControlOp? op = surface.Operations.FirstOrDefault(o => o.Name == name);

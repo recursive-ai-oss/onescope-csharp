@@ -77,6 +77,7 @@ internal sealed partial class ScopeEndpoint
         }
 
         w.WriteEndArray();
+        ContractOps.WriteSourceExtras(w, s);
         WriteForkInfo(w, s);
     }
 

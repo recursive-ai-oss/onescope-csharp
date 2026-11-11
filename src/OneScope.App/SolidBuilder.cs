@@ -88,6 +88,23 @@ internal sealed class SolidBuilder
         }
     }
 
+    /// <summary>A mesh painted by a scalar field: each corner takes the colour of its value, so a per-vertex field blends across a triangle.</summary>
+    public void FieldMesh(DrawList list, in DrawItem item)
+    {
+        ReadOnlySpan<Vector3> v = list.Vertices;
+        ReadOnlySpan<int> idx = list.Indices;
+        for (int t = 0; t + 2 < item.Count; t += 3)
+        {
+            Vector3 a = v[idx[item.First + t]], b = v[idx[item.First + t + 1]], c = v[idx[item.First + t + 2]];
+            Vector3 n = Vector3.Cross(b - a, c - a);
+            n = n.LengthSquared() > 1e-20f ? Vector3.Normalize(n) : Vector3.UnitY;
+            int i = AddVertex(a, n, Linear(list.FieldColorAt(item, item.First + t)));
+            AddVertex(b, n, Linear(list.FieldColorAt(item, item.First + t + 1)));
+            AddVertex(c, n, Linear(list.FieldColorAt(item, item.First + t + 2)));
+            AddTriangleIndices(i, i + 1, i + 2);
+        }
+    }
+
     public void Box(Vector3 centre, Vector3 half, Quaternion rotation, Vector4 colour)
     {
         ReadOnlySpan<Vector3> normals = [Vector3.UnitX, -Vector3.UnitX, Vector3.UnitY, -Vector3.UnitY, Vector3.UnitZ, -Vector3.UnitZ];

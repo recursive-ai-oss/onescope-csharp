@@ -12,9 +12,17 @@ public static class TestReplayBuilder
     /// Builds a replay of <paramref name="steps"/> steps. Pokes come from <paramref name="seed"/> alone, so the same arguments
     /// give the same bytes. Hash rows are computed by running a world straight through, without the history.
     /// </summary>
-    public static byte[] Build(int dimensions, int bodies, uint seed, int steps)
+    public static byte[] Build(int dimensions, int bodies, uint seed, int steps) =>
+        Build(TestFormat.MakeSetup(dimensions, bodies, seed), seed, steps);
+
+    /// <summary>
+    /// Builds a replay for a given setup, for example a linked one from <see cref="TestFormat.MakeLinkedSetup"/>. The poke stream comes from
+    /// <paramref name="seed"/> and the setup's body count.
+    /// </summary>
+    public static byte[] Build(byte[] setup, uint seed, int steps)
     {
-        byte[] setup = TestFormat.MakeSetup(dimensions, bodies, seed);
+        ArgumentNullException.ThrowIfNull(setup);
+        int bodies = setup[1];
         var inputs = new List<ReadOnlyMemory<byte>>(steps);
         var world = new TestWorld(setup);
         var hashes = new ulong[steps + 1];

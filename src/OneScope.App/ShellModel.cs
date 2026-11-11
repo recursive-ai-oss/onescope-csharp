@@ -28,6 +28,15 @@ internal sealed class ViewState
 
     public bool Grid { get; set; } = true;
 
+    /// <summary>Ghost sources drawn over this view's source, in the order they were added.</summary>
+    public List<SourceSession> Ghosts { get; } = [];
+
+    /// <summary>When true the camera follows the selected entity, even across a link into another source.</summary>
+    public bool Track { get; set; }
+
+    /// <summary>Ghost source numbers a restored layout named, until the sources exist to resolve them.</summary>
+    public List<int> PendingGhosts { get; } = [];
+
     /// <summary>2D: world point at the view's centre. 3D: the orbit target.</summary>
     public Vector3 Target { get; set; }
 
@@ -262,7 +271,11 @@ internal sealed partial class ShellModel
     }
 
     /// <summary>Adds the modules that ship inside the app: today the OnePhysics module.</summary>
-    public void AddBundledModules() => AddModule(new OnePhysicsModule());
+    public void AddBundledModules()
+    {
+        AddModule(new PoseCacheModule());
+        AddModule(new OnePhysicsModule());
+    }
 
     public SourceSession Source(int index)
     {
@@ -381,6 +394,11 @@ internal sealed partial class ShellModel
 
     private void AddDefaultViews(SourceSession session)
     {
+        if (session.Info.Ghost is not null && OverlayGhost(session))
+        {
+            return;
+        }
+
         IScopeSource source = session.Source;
         var view = new ViewState { Source = session.Index, Kind = source.Info.Dimensions == 3 ? ViewKind.Space3D : ViewKind.Plane2D, Overlays = DefaultOverlays(source.Info) };
         _views.Add(view);
@@ -536,6 +554,11 @@ internal sealed partial class ShellModel
     /// </summary>
     public SourceSession Fork(SourceSession parent, long step, bool addView)
     {
+        if (parent.Info.Ghost is not null)
+        {
+            throw new ControlException("ghost_source", $"Source {parent.Index} ('{parent.Label}') is a ghost: a pose cache with no simulation behind it, so it can't be forked or poked. Open its real simulation (the open_real operation) and fork that.");
+        }
+
         if (step < parent.History.StartStep || step > parent.History.EndStep)
         {
             throw new ControlException("bad_args", $"Source {parent.Index} runs from step {parent.History.StartStep} to {parent.History.EndStep}; fork at a step in that range.");
@@ -693,6 +716,7 @@ internal sealed partial class ShellModel
             s.History.Seek(Math.Clamp(step, s.History.StartStep, s.History.EndStep));
         }
 
+        FollowLinks();
         Touch();
     }
 

@@ -1,8 +1,9 @@
 // SharpFuzz harness for the two parsers of untrusted bytes that onescope owns outside the modules:
 //   AttachFuzz handshake   the probe handshake and stream frame headers
 //   AttachFuzz session     the .oscope session file
+//   AttachFuzz posecache   the pose cache that opens as a ghost source
 //   AttachFuzz seeds <dir>     write a small seed corpus for both targets
-//   AttachFuzz replay <handshake|session> <file>   run one input (a crash repro) through the chosen target without the fuzzer
+//   AttachFuzz replay <handshake|session|posecache> <file>   run one input (a crash repro) through the chosen target without the fuzzer
 // Typed errors are the expected answer to bad input; any other exception is a finding.
 using System.Buffers;
 using OneScope.Attach;
@@ -25,9 +26,9 @@ if (args.Length >= 3 && args[0] == "replay")
     return 0;
 }
 
-if (args.Length != 1 || args[0] is not ("handshake" or "session"))
+if (args.Length != 1 || args[0] is not ("handshake" or "session" or "posecache"))
 {
-    Console.Error.WriteLine("usage: AttachFuzz handshake|session   (run under afl-fuzz)");
+    Console.Error.WriteLine("usage: AttachFuzz handshake|session|posecache   (run under afl-fuzz)");
     return 2;
 }
 
@@ -64,6 +65,18 @@ static void Run(string target, Stream stream)
                 }
             }
         }
+        else if (target == "posecache")
+        {
+            PoseCache cache = PoseCache.Parse(bytes, "fuzz.ospc");
+
+            // A cache that parses must write back to the same bytes.
+            var w = new ArrayBufferWriter<byte>();
+            cache.Write(w);
+            if (!w.WrittenSpan.SequenceEqual(bytes))
+            {
+                throw new InvalidOperationException("a parsed pose cache did not write back to the same bytes");
+            }
+        }
         else
         {
             SessionFile file = SessionFile.Parse(bytes, "fuzz.oscope", new SessionLimits(1 << 24, 256, 1 << 20));
@@ -86,6 +99,9 @@ static void WriteSeeds(string dir)
 {
     Directory.CreateDirectory(Path.Combine(dir, "handshake"));
     Directory.CreateDirectory(Path.Combine(dir, "session"));
+    Directory.CreateDirectory(Path.Combine(dir, "posecache"));
+    var source2d = (TestSource)new TestModule().Open(TestReplayBuilder.Build(2, 4, 1, 60), "seed");
+    File.WriteAllBytes(Path.Combine(dir, "posecache", "ghost"), TestGhost.ToBytes(TestGhost.Record(source2d, 5, 12, new System.Numerics.Vector3(100, 0, 0), "seed.ostm")));
     var info = new ProbeInfo("onephysics", "1.0.0", 3);
     byte[] hello = new byte[ProbeWire.HandshakeLength(info)];
     ProbeWire.WriteHandshake(hello, info, 1234);

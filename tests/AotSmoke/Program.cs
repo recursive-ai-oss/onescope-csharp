@@ -126,8 +126,61 @@ if (!sessionAgain.WrittenSpan.SequenceEqual(sessionBytes.WrittenSpan))
 
 Directory.Delete(socketDir, true);
 
+// Fields, links, the shared-entity diff and the pose cache.
+byte[] fieldBytes = TestReplayBuilder.Build(TestFormat.MakeFieldSetup(2, 6, 3), 3, 80);
+var fieldSource = (TestSource)module.Open(fieldBytes, "field");
+var fieldWorld = (TestWorld)fieldSource.CreateWorld();
+for (int s = 0; s < 40; s++)
+{
+    fieldWorld.Advance(fieldSource.Recording.InputAt(s).Span, TimelineSink.None);
+}
+
+var fieldList = new DrawList();
+fieldWorld.Draw(fieldList, new DrawRequest(1UL << TestModule.DensityOverlay));
+if (fieldList.FieldBindings.Count != 1 || fieldSource.Info.Fields.Count != 2 || !fieldWorld.TryReadFieldAt("density", new Vector3(5000, 5000, 0), out double density)
+    || double.IsNaN(density) || float.IsNaN(fieldList.FieldValueAt(fieldList.Items[0], fieldList.Items[0].First)))
+{
+    Console.WriteLine("field draw or read failed");
+    return 1;
+}
+
+var linkWorld = (TestWorld)((TestSource)module.Open(TestReplayBuilder.Build(TestFormat.MakeLinkedSetup(2, 6, 3, 1, 2, 30), 3, 60), "left")).CreateWorld();
+var links = new List<EntityLink>();
+((IScopeWorld)linkWorld).CollectLinks(links);
+if (links.Count != 1 || links[0].Step != 30 || links[0].Direction != LinkDirection.ContinuedBy)
+{
+    Console.WriteLine("link not declared");
+    return 1;
+}
+
+SharedDifference shared = ((IScopeWorld)fieldWorld).CompareShared(fieldWorld, EntityMap.Identity);
+if (shared.First is not null || shared.Shared != 8 || shared.OnlyLeft != 0 || shared.OnlyRight != 0)
+{
+    Console.WriteLine("shared diff of a world with itself is not empty");
+    return 1;
+}
+
+PoseCache poses = TestGhost.Record(fieldSource, 10, 8, new Vector3(100, 0, 0), "field.ostm");
+byte[] poseBytes = TestGhost.ToBytes(poses);
+PoseCache posesAgain = PoseCache.Parse(poseBytes, "smoke.ospc");
+if (!TestGhost.ToBytes(posesAgain).AsSpan().SequenceEqual(poseBytes) || posesAgain.FrameCount != 8 || !PoseCache.HasMagic(poseBytes))
+{
+    Console.WriteLine("pose cache round trip differs");
+    return 1;
+}
+
+try
+{
+    PoseCache.Parse(poseBytes.AsMemory(0, poseBytes.Length - 3), "cut.ospc");
+    Console.WriteLine("a truncated pose cache was accepted");
+    return 1;
+}
+catch (ScopeFormatException)
+{
+}
+
 history.Scan();
-Console.WriteLine($"ok items={list.Items.Length} diff={diff.Value.Field} findings={history.Findings.Count} fork={reopened.Recording.StepCount} connected={probe.IsConnected} live-attach=ok session-roundtrip=ok");
+Console.WriteLine($"ok fields=1 links=1 shared-diff=ok pose-cache=ok items={list.Items.Length} diff={diff.Value.Field} findings={history.Findings.Count} fork={reopened.Recording.StepCount} connected={probe.IsConnected} live-attach=ok session-roundtrip=ok");
 return 0;
 
 internal sealed class NoSnapshot : ISnapshotSource

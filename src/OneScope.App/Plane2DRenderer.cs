@@ -79,7 +79,7 @@ internal static class GridMath
 }
 
 /// <summary>Draws a 2D view with the 2D renderer's canvas: primitives are rotated, rounded rectangles clipped to the view.</summary>
-internal static class Plane2DRenderer
+internal static partial class Plane2DRenderer
 {
     private static readonly UiColor Background = new(24, 26, 31);
     private static readonly UiColor GridMinor = new(44, 47, 55);
@@ -95,7 +95,7 @@ internal static class Plane2DRenderer
     public static void Rebuild(ViewCache cache, ViewState view, SourceSession source, OneGame.UI.Rect rect)
     {
         cache.List.Clear();
-        source.History.View.Draw(cache.List, new DrawRequest(view.Overlays));
+        ShellModel.DrawView(view, source, cache.List);
         cache.Labels.Clear();
         Frame f = MakeFrame(view, rect);
         if (view.Grid)
@@ -115,6 +115,7 @@ internal static class Plane2DRenderer
             }
         }
 
+        FieldLegend.AddLabels(cache, rect);
         SortByLayer(cache);
     }
 
@@ -218,6 +219,12 @@ internal static class Plane2DRenderer
                 break;
             case DrawKind.Mesh:
                 {
+                    if (item.Field != 0 && !wire)
+                    {
+                        FieldMesh(ui, rect, f, list, item, edge);
+                        break;
+                    }
+
                     ReadOnlySpan<Vector3> vertices = list.Vertices;
                     ReadOnlySpan<int> indices = list.Indices;
                     int cap = Math.Min(item.Count, 3 * 20000);

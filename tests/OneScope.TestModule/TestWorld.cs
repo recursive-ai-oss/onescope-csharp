@@ -28,6 +28,10 @@ public sealed class TestWorld : IScopeWorld
     private readonly int[] _p;
     private readonly int[] _v;
     private int _gravity = -3;
+    private readonly bool _fields;
+    private readonly int _linkRole;
+    private readonly int _linkBody;
+    private readonly long _linkStep;
 
     /// <summary>Creates the world from the 6-byte setup.</summary>
     public TestWorld(ReadOnlySpan<byte> setup)
@@ -48,6 +52,14 @@ public sealed class TestWorld : IScopeWorld
             _names[i] = "body-" + i.ToString(CultureInfo.InvariantCulture);
         }
 
+        if (setup.Length == TestFormat.LinkedSetupLength)
+        {
+            _fields = true;
+            _linkRole = setup[6] is 1 or 2 ? setup[6] : 0;
+            _linkBody = setup[7];
+            _linkStep = BinaryPrimitives.ReadUInt16LittleEndian(setup[8..]);
+        }
+
         uint state = seed ^ 0x9E3779B9u;
         for (int i = 0; i < _count; i++)
         {
@@ -57,6 +69,12 @@ public sealed class TestWorld : IScopeWorld
                 _p[i * 3 + a] = 500 + (int)(Next(ref state) % 9000);
                 _v[i * 3 + a] = (int)(Next(ref state) % 121) - 60;
             }
+        }
+
+        if (_linkRole == 2)
+        {
+            // The receiving world does not hold the body until it arrives.
+            _alive[_linkBody] = false;
         }
     }
 
@@ -192,6 +210,7 @@ public sealed class TestWorld : IScopeWorld
                     Move(sink);
                     break;
                 default:
+                    Transfer(reached);
                     for (int i = 0; i < _count; i++)
                     {
                         if (!_alive[i])
@@ -207,7 +226,30 @@ public sealed class TestWorld : IScopeWorld
             }
         }
 
-        _ = reached;
+    }
+
+    /// <summary>The handed-over body leaves the sending world, or arrives in the receiving one, at the transfer step.</summary>
+    private void Transfer(long reached)
+    {
+        if (_linkRole == 0 || reached != _linkStep)
+        {
+            return;
+        }
+
+        int i = _linkBody;
+        if (_linkRole == 1)
+        {
+            _alive[i] = false;
+            return;
+        }
+
+        _alive[i] = true;
+        _sleep[i] = 0;
+        for (int a = 0; a < _dims; a++)
+        {
+            _p[(i * 3) + a] = 5000;
+            _v[(i * 3) + a] = a == 1 ? 0 : 40;
+        }
     }
 
     private void Move(TimelineSink sink)
@@ -563,6 +605,11 @@ public sealed class TestWorld : IScopeWorld
             }
         }
 
+        if (_fields && (request.IsOn(TestModule.DensityOverlay) || request.IsOn(TestModule.OccupancyOverlay)))
+        {
+            DrawFields(into, request);
+        }
+
         if (request.IsOn(2))
         {
             var b = new DrawStyle(BoundsColor, 2, 0);
@@ -587,6 +634,174 @@ public sealed class TestWorld : IScopeWorld
             }
         }
     }
+
+    private const int GridCells = 8;
+    private const int GridVertices = GridCells + 1;
+    private const float CellSize = Size / (float)GridCells;
+    private const float Reach = 3000f;
+
+    /// <summary>The floor grid the fields are drawn on: 2D uses the x-y plane, 3D the floor (x-z) just above the box floor.</summary>
+    private void DrawFields(DrawList into, in DrawRequest request)
+    {
+        bool is3D = _dims == 3;
+        Span<Vector3> vertices = stackalloc Vector3[GridVertices * GridVertices];
+        Span<float> density = stackalloc float[GridVertices * GridVertices];
+        Span<int> indices = stackalloc int[GridCells * GridCells * 6];
+        Span<float> occupancy = stackalloc float[GridCells * GridCells * 2];
+        for (int j = 0; j < GridVertices; j++)
+        {
+            for (int i = 0; i < GridVertices; i++)
+            {
+                float u = i * CellSize;
+                float v = j * CellSize;
+                vertices[(j * GridVertices) + i] = is3D ? new Vector3(u, 15, v) : new Vector3(u, v, 0);
+                density[(j * GridVertices) + i] = DensityAt(u, v);
+            }
+        }
+
+        int t = 0;
+        for (int j = 0; j < GridCells; j++)
+        {
+            for (int i = 0; i < GridCells; i++)
+            {
+                int a = (j * GridVertices) + i;
+                int b = a + 1;
+                int c = a + GridVertices;
+                int d = c + 1;
+                indices[t * 3] = a;
+                indices[(t * 3) + 1] = b;
+                indices[(t * 3) + 2] = d;
+                indices[(t * 3) + 3] = a;
+                indices[(t * 3) + 4] = d;
+                indices[(t * 3) + 5] = c;
+                float count = OccupancyAt((i + 0.5f) * CellSize, (j + 0.5f) * CellSize);
+                occupancy[t] = count;
+                occupancy[t + 1] = count;
+                t += 2;
+            }
+        }
+
+        if (request.IsOn(TestModule.DensityOverlay))
+        {
+            into.FieldMesh(vertices, indices, density, FieldDomain.Vertex, TestModule.DensityField, new DrawStyle(StaticColor, TestModule.DensityOverlay, -2));
+        }
+
+        if (request.IsOn(TestModule.OccupancyOverlay))
+        {
+            into.FieldMesh(vertices, indices, occupancy, FieldDomain.Element, TestModule.OccupancyField, new DrawStyle(StaticColor, TestModule.OccupancyOverlay, -2));
+        }
+    }
+
+    private (float U, float V) Plane(int i) => (_p[i * 3], _dims == 3 ? _p[(i * 3) + 2] : _p[(i * 3) + 1]);
+
+    private float DensityAt(float u, float v)
+    {
+        float sum = 0;
+        for (int i = 0; i < _count; i++)
+        {
+            if (!_alive[i])
+            {
+                continue;
+            }
+
+            (float pu, float pv) = Plane(i);
+            float d = MathF.Sqrt(((pu - u) * (pu - u)) + ((pv - v) * (pv - v)));
+            sum += MathF.Max(0f, 1f - (d / Reach));
+        }
+
+        return sum;
+    }
+
+    private float OccupancyAt(float u, float v)
+    {
+        int cu = Math.Clamp((int)(u / CellSize), 0, GridCells - 1);
+        int cv = Math.Clamp((int)(v / CellSize), 0, GridCells - 1);
+        int n = 0;
+        for (int i = 0; i < _count; i++)
+        {
+            if (_alive[i])
+            {
+                (float pu, float pv) = Plane(i);
+                n += Math.Clamp((int)(pu / CellSize), 0, GridCells - 1) == cu && Math.Clamp((int)(pv / CellSize), 0, GridCells - 1) == cv ? 1 : 0;
+            }
+        }
+
+        return n;
+    }
+
+    /// <inheritdoc />
+    public bool TryReadField(string field, EntityId entity, out double value)
+    {
+        value = 0;
+        if (!TryBody(entity, out int i))
+        {
+            return false;
+        }
+
+        (float u, float v) = Plane(i);
+        return TryReadFieldAt(field, _dims == 3 ? new Vector3(u, 0, v) : new Vector3(u, v, 0), out value);
+    }
+
+    /// <inheritdoc />
+    public bool TryReadFieldAt(string field, Vector3 point, out double value)
+    {
+        value = 0;
+        if (!_fields)
+        {
+            return false;
+        }
+
+        float u = point.X;
+        float v = _dims == 3 ? point.Z : point.Y;
+        if (u < 0 || v < 0 || u > Size || v > Size)
+        {
+            return false;
+        }
+
+        switch (field)
+        {
+            case "density":
+                value = DensityAt(u, v);
+                return true;
+            case "occupancy":
+                value = OccupancyAt(u, v);
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    /// <inheritdoc />
+    public void CollectLinks(List<EntityLink> into)
+    {
+        ArgumentNullException.ThrowIfNull(into);
+        into.Clear();
+        if (_linkRole == 0)
+        {
+            return;
+        }
+
+        var body = new EntityId(TestModule.FirstBodyId + (ulong)_linkBody);
+        into.Add(_linkRole == 1
+            ? new EntityLink(body, LinkDirection.ContinuedBy, TestModule.RightKey, body, _linkStep)
+            : new EntityLink(body, LinkDirection.Continues, TestModule.LeftKey, body, _linkStep));
+    }
+
+    /// <summary>The position of a live body in millimetres, for tests and ghost-cache writers; false when the body is not alive.</summary>
+    public bool TryGetBodyPosition(int index, out Vector3 position)
+    {
+        position = default;
+        if ((uint)index >= (uint)_count || !_alive[index])
+        {
+            return false;
+        }
+
+        position = new Vector3(_p[index * 3], _p[(index * 3) + 1], _p[(index * 3) + 2]);
+        return true;
+    }
+
+    /// <summary>The number of bodies the world was created with.</summary>
+    public int BodyCount => _count;
 
     /// <inheritdoc />
     public void EncodePoke(in PokeCall call, IBufferWriter<byte> into)

@@ -115,6 +115,8 @@ internal sealed class ScopeStage : Render2DStage, IFrameOverlay
 
                 renderer.Ui.Image(rect, cache.Texture, UiColor.White);
             }
+
+            FieldLegend.DrawBars(renderer.Ui, rect, cache);
         }
 
     }
