@@ -6,13 +6,23 @@ namespace OneScope.App.Tests;
 
 /// <summary>
 /// Headless captures are byte-identical run to run and equal to the committed goldens. The goldens come from lavapipe (the software Vulkan
-/// driver); on another driver the pixels differ in the last bits, so the comparison runs only where the capture says it was drawn by llvmpipe.
+/// driver); on another driver the pixels differ in the last bits, so the comparison runs only where the capture says it was drawn by llvmpipe,
+/// exactly on the build that drew them and within one step per channel on another build.
 /// Set ONESCOPE_UPDATE_GOLDENS=1 and ONESCOPE_GOLDEN_DIR=<the goldens folder> to rewrite them after a change you have looked at.
 /// </summary>
 [Collection("shell")]
 public sealed class GoldenTests
 {
     private const string Reference = "llvmpipe";
+
+    /// <summary>The llvmpipe build the committed goldens were drawn with. Another build of the same driver rounds a few channels differently.</summary>
+    private const string ReferenceBuild = "LLVM 21.";
+
+    /// <summary>
+    /// The most any channel may differ from a golden: none on the build that drew it, one step on another llvmpipe build (the rounding of
+    /// the same shader code), which is how the worker and the CI runners' older builds differ.
+    /// </summary>
+    private static int Tolerance(string renderer) => renderer.Contains(ReferenceBuild, StringComparison.Ordinal) ? 0 : 1;
 
     private static string GoldenPath(string name) => Path.Combine(AppContext.BaseDirectory, "goldens", name + ".png");
 
@@ -115,8 +125,9 @@ public sealed class GoldenTests
             max = Math.Max(max, Math.Abs(expected.Rgba[i] - actual.Rgba[i]));
         }
 
-        Harness.Report($"golden {golden}: max per-channel difference {max} (tolerance 0); golden sha {Harness.Sha(File.ReadAllBytes(goldenFile))[..16]}");
-        Assert.Equal(0, max);
+        int tolerance = Tolerance(runs[0].Renderer);
+        Harness.Report($"golden {golden}: max per-channel difference {max} (tolerance {tolerance}); golden sha {Harness.Sha(File.ReadAllBytes(goldenFile))[..16]}");
+        Assert.True(max <= tolerance, $"Golden {golden} differs from the capture by {max} in a channel; the tolerance on {runs[0].Renderer} is {tolerance}.");
     }
 
     [Fact]
