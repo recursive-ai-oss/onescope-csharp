@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The test module built a second time with one rule changed (the OSTM_RULE_B symbol): a stand-in for a new version of a library's module. -->
+  <PropertyGroup>
+    <AssemblyName>OneScope.TestModule</AssemblyName>
+    <RootNamespace>$(OneScopeRootNamespace).TestModule</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <IsAotCompatible>true</IsAotCompatible>
+    <DefineConstants>$(DefineConstants);OSTM_RULE_B</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\OneScope.TestModule\*.cs" />
+    <ProjectReference Include="..\..\src\OneScope.Sdk\OneScope.Sdk.csproj" />
+  </ItemGroup>
+</Project>

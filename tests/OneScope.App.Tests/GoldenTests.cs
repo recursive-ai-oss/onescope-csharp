@@ -145,8 +145,11 @@ public sealed class GoldenTests
         h.Call("inspect", """{"entity":104}""");
         h.Call("capture_frame", """{"path":"e.png"}""");
         h.Call("capture_frame", """{"path":"f.png","view":0,"size":"640x360"}""");
+        // The compare panel and the agreement row.
+        h.Call("compare", """{"goto":"last"}""");
+        h.Call("capture_frame", """{"path":"g.png"}""");
         string[] messages = h.Game.TakeGpuValidationMessages();
-        Harness.Report($"validation: {messages.Length} messages over 6 captures of 3D, 2D, wireframe, fork and selection views");
+        Harness.Report($"validation: {messages.Length} messages over 7 captures of 3D, 2D, wireframe, fork, selection and compare views");
         Assert.Empty(messages);
     }
 }

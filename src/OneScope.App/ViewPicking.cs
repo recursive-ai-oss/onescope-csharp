@@ -25,7 +25,7 @@ internal static class ViewPicking
         source.History.View.Draw(list, new DrawRequest(view.Overlays));
         if (view.Kind == ViewKind.Plane2D)
         {
-            float ppu = rect.Height / (2 * Math.Max(view.HalfHeight, 1e-9f));
+            float ppu = Math.Min(rect.Width, rect.Height) / (2 * Math.Max(view.HalfHeight, 1e-9f));
             Vector3 world = PointOn2D(view, rect, x, y);
             int n = list.Items.Length;
             int[] order = LayerOrder(list);
@@ -71,7 +71,7 @@ internal static class ViewPicking
     {
         if (view.Kind == ViewKind.Plane2D)
         {
-            float ppu = rect.Height / (2 * Math.Max(view.HalfHeight, 1e-9f));
+            float ppu = Math.Min(rect.Width, rect.Height) / (2 * Math.Max(view.HalfHeight, 1e-9f));
             return new Vector2(rect.X + (rect.Width / 2) + ((world.X - view.Target.X) * ppu), rect.Y + (rect.Height / 2) - ((world.Y - view.Target.Y) * ppu));
         }
 
@@ -85,7 +85,7 @@ internal static class ViewPicking
     /// <summary>The world point under the pointer in a 2D view (Z = 0).</summary>
     public static Vector3 PointOn2D(ViewState view, UiRect rect, float x, float y)
     {
-        float ppu = rect.Height / (2 * Math.Max(view.HalfHeight, 1e-9f));
+        float ppu = Math.Min(rect.Width, rect.Height) / (2 * Math.Max(view.HalfHeight, 1e-9f));
         return new Vector3(
             view.Target.X + ((x - (rect.X + (rect.Width / 2))) / ppu),
             view.Target.Y - ((y - (rect.Y + (rect.Height / 2))) / ppu),

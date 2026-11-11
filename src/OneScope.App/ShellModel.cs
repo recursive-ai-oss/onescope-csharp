@@ -41,7 +41,7 @@ internal sealed class ViewState
     /// <summary>2D: world point at the view's centre. 3D: the orbit target.</summary>
     public Vector3 Target { get; set; }
 
-    /// <summary>2D: world units from the centre to the top edge.</summary>
+    /// <summary>2D: world units from the centre to the nearest edge, so what is framed stays in view in a view taller than it is wide.</summary>
     public float HalfHeight { get; set; } = 1;
 
     /// <summary>3D: orbit distance in world units.</summary>
@@ -127,6 +127,9 @@ internal sealed class SourceSession
 
     public IScopeModule Module { get; }
 
+    /// <summary>The assembly the module was loaded from when it was not one of the app's own, else null.</summary>
+    public string? ModuleFrom { get; set; }
+
     public IScopeSource Source { get; }
 
     public History History { get; }
@@ -153,6 +156,9 @@ internal sealed class PanelState
     public bool Timeline { get; set; } = true;
 
     public bool Log { get; set; } = true;
+
+    /// <summary>The compare panel; shown by the toolbar's Compare button, and by the compare operation.</summary>
+    public bool Compare { get; set; }
 }
 
 /// <summary>
@@ -303,7 +309,7 @@ internal sealed partial class ShellModel
 
     /// <summary>Opens a file with the first module that accepts it.</summary>
     /// <exception cref="ControlException"><c>not_found</c>, <c>too_large</c>, <c>no_module</c> or <c>bad_format</c>.</exception>
-    public SourceSession Open(string path, string? moduleId, int keyframeInterval, bool? scan)
+    public SourceSession Open(string path, string? moduleId, int keyframeInterval, bool? scan, LoadedModule? from = null)
     {
         ArgumentException.ThrowIfNullOrEmpty(path);
         string full = Path.GetFullPath(path);
@@ -328,7 +334,7 @@ internal sealed partial class ShellModel
         var problems = new List<string>();
         IScopeSource? source = null;
         IScopeModule? used = null;
-        foreach (IScopeModule module in _modules)
+        foreach (IScopeModule module in from is null ? _modules : [from.Module])
         {
             if (moduleId is not null && module.Id != moduleId)
             {
@@ -375,7 +381,22 @@ internal sealed partial class ShellModel
         }
 
         var session = new SourceSession(_sources.Count, full, used, source, history, options.KeyframeInterval) { Label = name };
+        if (from is not null)
+        {
+            // A module loaded from a folder is named in the label, so two copies of one module on one file can be told apart.
+            session.ModuleFrom = from.Path;
+            session.Label = name + " [" + Path.GetFileName(Path.GetDirectoryName(from.Path)) + "]";
+        }
+
+        SourceSession? twin = _sources.FirstOrDefault(x => !x.IsFork && x.Live is null && x.Path == full && x.Info.ModuleId == used.Id && !ReferenceEquals(x.Module, used));
         AddSession(session);
+        if (twin is not null)
+        {
+            // The same file through another copy of the module: the compare panel and the agreement track pair them.
+            Panels.Compare = true;
+            Pair = new ComparePair(twin, session, CompareKind.Versions, "identity", EntityMap.Identity, ComparePair.AutoOffset(twin, session, CompareKind.Versions));
+        }
+
         AddLog(session.Index, "shell", $"opened {name} ({used.Id}, {source.Info.Dimensions}D, {history.StepCount} steps)");
         Touch();
         return session;
@@ -546,7 +567,7 @@ internal sealed partial class ShellModel
     public EntityId HighlightFor(ViewState view) =>
         ActiveSource < _sources.Count && view.Source < _sources.Count && ReferenceEquals(_sources[ActiveSource].Root, _sources[view.Source].Root)
             ? Selected
-            : EntityId.None;
+            : PairHighlight(view);
 
     /// <summary>The most scene views the shell lays out.</summary>
     public const int MaxViews = 4;
@@ -673,14 +694,16 @@ internal sealed partial class ShellModel
             throw new ControlException("bad_args", $"Step {step} is outside both recordings: source {a.Index} runs {a.History.StartStep} to {a.History.EndStep} and source {b.Index} runs {b.History.StartStep} to {b.History.EndStep}; use {from} to {limit}.");
         }
 
-        if (!ReferenceEquals(a.Module, b.Module))
+        if (!ReferenceEquals(a.Module, b.Module) && a.Info.ModuleId != b.Info.ModuleId)
         {
             throw new ControlException("bad_args", $"Sources {a.Index} and {b.Index} come from different modules ({a.Info.ModuleId}, {b.Info.ModuleId}) and can't be compared.");
         }
 
         try
         {
-            Difference? found = a.History.Diff(b.History, step);
+            a.History.Seek(step);
+            b.History.Seek(step);
+            Difference? found = CompareWorlds.First(a, b, a.History.World, b.History.World);
             hashA = a.History.StateHash;
             hashB = b.History.StateHash;
             return found;

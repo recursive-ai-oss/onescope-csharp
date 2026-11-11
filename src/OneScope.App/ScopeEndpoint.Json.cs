@@ -22,6 +22,11 @@ internal sealed partial class ScopeEndpoint
         w.WriteString("name", info.Name);
         w.WriteString("path", s.Path);
         w.WriteString("module", info.ModuleId);
+        if (s.ModuleFrom is not null)
+        {
+            w.WriteString("moduleAssembly", s.ModuleFrom);
+        }
+
         w.WriteNumber("dimensions", info.Dimensions);
         w.WriteStartObject("unit");
         w.WriteString("name", info.Unit.Name);

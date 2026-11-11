@@ -7,6 +7,9 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/OneScope.TestModule/OneScope.TestModule.csproj" />
+    <Project Path="tests/OneScope.TestModule.RuleB/OneScope.TestModule.RuleB.csproj" />
+    <Project Path="tests/PhysicsModuleA/PhysicsModuleA.csproj" />
+    <Project Path="tests/PhysicsModuleB/PhysicsModuleB.csproj" />
     <Project Path="tests/OneScope.Sdk.Tests/OneScope.Sdk.Tests.csproj" />
     <Project Path="tests/OneScope.App.Tests/OneScope.App.Tests.csproj" />
     <Project Path="tests/OneScope.Attach.Tests/OneScope.Attach.Tests.csproj" />

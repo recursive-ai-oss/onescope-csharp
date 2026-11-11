@@ -484,7 +484,7 @@ internal sealed class ContractOps(ShellModel shell)
             throw new ControlException("bad_args", "A ghost source holds poses only and can't be compared with diff_shared.");
         }
 
-        if (!ReferenceEquals(left.Module, right.Module))
+        if (!ReferenceEquals(left.Module, right.Module) && left.Info.ModuleId != right.Info.ModuleId)
         {
             throw new ControlException("bad_args", $"Sources {left.Index} and {right.Index} come from different modules ({left.Info.ModuleId}, {right.Info.ModuleId}) and can't be compared.");
         }
@@ -531,7 +531,7 @@ internal sealed class ContractOps(ShellModel shell)
         {
             left.History.Seek(step);
             right.History.Seek(step);
-            result = left.History.World.CompareShared(right.History.World, map);
+            result = CompareWorlds.Shared(left, right, left.History.World, right.History.World, map);
             hashLeft = left.History.StateHash;
             hashRight = right.History.StateHash;
         }

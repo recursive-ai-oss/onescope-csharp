@@ -79,7 +79,9 @@ internal sealed class ScopeGame : GameDefinition
             .Rule(".panel", s => s.Background(UiColor.Hex("#1b1d23")))
             .Rule(".panel-title", s => s.Background(UiColor.Hex("#23262d")).TextColor(UiColor.Hex("#9aa3b5")).FontSize(Length.Px(11)))
             .Rule(".shell", s => s.WhiteSpace(WhiteSpace.NoWrap))
-            .Rule(".mono", s => s.FontSize(Length.Px(12))));
+            .Rule(".mono", s => s.FontSize(Length.Px(12)))
+            // Toolbars and panel headers use shorter buttons, so a small window keeps its room for the views.
+            .Rule(".tight .kit-button", s => s.Padding(Length.Px(2), Length.Px(8)).MinHeight(Length.Px(24))));
     }
 
     /// <inheritdoc />
@@ -123,14 +125,15 @@ internal sealed class ScopeGame : GameDefinition
                 UiKit.ToggleButton("Entities", () => shell.Panels.Entities, on => { shell.Panels.Entities = on; shell.Touch(); }, "panel-entities"),
                 UiKit.ToggleButton("Inspector", () => shell.Panels.Inspector, on => { shell.Panels.Inspector = on; shell.Touch(); }, "panel-inspector"),
                 UiKit.ToggleButton("Timeline", () => shell.Panels.Timeline, on => { shell.Panels.Timeline = on; shell.Touch(); }, "panel-timeline"),
+                UiKit.ToggleButton("Compare", () => shell.Panels.Compare, on => { shell.Panels.Compare = on; shell.Touch(); }, "panel-compare"),
                 UiKit.ToggleButton("Log", () => shell.Panels.Log, on => { shell.Panels.Log = on; shell.Touch(); }, "panel-log"))
-            .Wrap().Shrink(0).Align(Align.Center).Gap(Length.Px(6)).Padding(Length.Px(6)).Class("panel").Named("toolbar")
+            .Wrap().Shrink(0).Align(Align.Center).Gap(Length.Px(4)).Padding(Length.Px(3), Length.Px(6)).Class("panel").Class("tight").Named("toolbar")
             .BindVisible(() => shell.Solo < 0);
 
         ListView<TreeRow> tree = UiKit.TextList(() => shell.Tree(), r => r.Text, Length.Px(RowHeight), (row, _) => shell.Select(row.Entity.Id), null, "entities");
         tree.OnUpdate(_ => SyncSelection(tree));
         Element entities = Ui.Column(Title("Entities"), tree.Grow(1).Style(st => st.MinHeight(Length.Px(0))))
-            .Width(Length.Px(230)).Class("panel").Named("entities-panel")
+            .Width(Length.Px(190)).Shrink(0).Class("panel").Named("entities-panel")
             .BindVisible(() => shell.Solo < 0 && shell.Panels.Entities);
 
         var views = Ui.Row().Grow(1).MinWidth(0).Gap(Length.Px(2));
@@ -157,16 +160,17 @@ internal sealed class ScopeGame : GameDefinition
             id: "inspector",
             version: () => shell.Version);
         Element inspector = Ui.Column(Title("Inspector").BindText(() => shell.Selected.Value, id => id == 0 ? "Inspector" : "Inspector  ·  entity " + id), props.Grow(1).Style(st => st.MinHeight(Length.Px(0))))
-            .Grow(1).Class("panel").Named("inspector-panel")
+            .Grow(1).Shrink(0).Style(st => st.MinHeight(Length.Px(110))).Class("panel").Named("inspector-panel")
             .BindVisible(() => shell.Solo < 0 && shell.Panels.Inspector);
 
         _pokes = new PokePanel(shell, RunOp);
-        Element right = Ui.Column(_pokes.Build(), inspector).Width(Length.Px(320)).Gap(Length.Px(2)).Named("right-column")
+        Element right = Ui.Column(_pokes.Build(), inspector).Width(Length.Px(280)).Shrink(0).Gap(Length.Px(2)).Named("right-column")
             .BindVisible(() => shell.Solo < 0 && (shell.Panels.Inspector || _pokes.Visible));
 
-        Element main = Ui.Row(entities, views, right).Grow(1).Style(st => st.MinHeight(Length.Px(0))).Gap(Length.Px(2));
+        // The scene area is the one that takes what the other panels leave; they give up height before it does, down to a floor.
+        Element main = Ui.Row(entities, views, right).Grow(1).Shrink(1).Basis(Length.Px(340)).Style(st => st.MinHeight(Length.Px(150))).Gap(Length.Px(2));
 
-        Element timeline = Ui.Box().Height(Length.Px(190)).Shrink(0).Class("panel").Named("timeline").Focusable()
+        Element timeline = Ui.Box().Basis(Length.Px(170)).Shrink(1).Style(st => st.MinHeight(Length.Px(96))).Class("panel").Named("timeline").Focusable()
             .BindVisible(() => shell.Solo < 0 && shell.Panels.Timeline);
         timeline.On(UiEventKind.PointerDown, (e, ev) => TimelinePointer(e, ev, true));
         timeline.On(UiEventKind.PointerMove, (e, ev) => TimelinePointer(e, ev, false));
@@ -180,16 +184,19 @@ internal sealed class ScopeGame : GameDefinition
                 UiKit.Button("Zoom out", () => ZoomAtCursor(0.5), "timeline-zoom-out"),
                 UiKit.Button("<<", () => RunOp(() => _shell.PanTimeline(-Math.Max(_shell.TimelineRange.Length / 4, 1))), "timeline-pan-left"),
                 UiKit.Button(">>", () => RunOp(() => _shell.PanTimeline(Math.Max(_shell.TimelineRange.Length / 4, 1))), "timeline-pan-right"))
-            .Align(Align.Center).Gap(Length.Px(4)).Padding(Length.Px(2), Length.Px(6)).Shrink(0).Class("panel").Named("timeline-bar")
+            .Align(Align.Center).Gap(Length.Px(4)).Padding(Length.Px(2), Length.Px(6)).Shrink(0).Class("panel").Class("tight").Named("timeline-bar")
             .BindVisible(() => shell.Solo < 0 && shell.Panels.Timeline);
 
         ListView<LogRow> log = UiKit.TextList(() => shell.Log(), r => LogText(r), Length.Px(RowHeight), null, null, "log");
         Element logPanel = Ui.Column(Title("Event log"), log.Grow(1).Style(st => st.MinHeight(Length.Px(0))))
-            .Height(Length.Px(100)).Shrink(0).Class("panel").Named("log-panel")
+            .Basis(Length.Px(90)).Shrink(1).Style(st => st.MinHeight(Length.Px(56))).Class("panel").Named("log-panel")
             .BindVisible(() => shell.Solo < 0 && shell.Panels.Log);
 
-        return Ui.Column(toolbar, main, timelineBar, timeline, logPanel).Class("shell").Style(s => s.Anchor(AnchorPoint.Fill)).Gap(Length.Px(2));
+        _compare = new ComparePanel(shell, RunOp);
+        return Ui.Column(toolbar, main, timelineBar, timeline, _compare.Build(), logPanel).Class("shell").Style(s => s.Anchor(AnchorPoint.Fill)).Gap(Length.Px(2));
     }
+
+    private ComparePanel? _compare;
 
     private int _selectionVersion = -1;
 
@@ -348,7 +355,7 @@ internal sealed class ScopeGame : GameDefinition
                 _lastY = ev.Y;
                 if (view.Kind == ViewKind.Plane2D)
                 {
-                    float ppu = element.AbsoluteBounds.Height / (2 * Math.Max(view.HalfHeight, 1e-9f));
+                    float ppu = Math.Min(element.AbsoluteBounds.Width, element.AbsoluteBounds.Height) / (2 * Math.Max(view.HalfHeight, 1e-9f));
                     view.Target -= new System.Numerics.Vector3(dx / ppu, -dy / ppu, 0);
                 }
                 else
