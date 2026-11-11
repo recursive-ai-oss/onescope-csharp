@@ -58,7 +58,7 @@ internal sealed class Space3DRenderer : IDisposable
         scene.Camera = MakeCamera(view);
         DrawList list = cache.List;
         list.Clear();
-        source.History.View.Draw(list, new DrawRequest(view.Overlays));
+        ShellModel.DrawView(view, source, list);
         cache.Labels.Clear();
         SolidBuilder solids = cache.Solids;
         solids.Clear();
@@ -94,6 +94,7 @@ internal sealed class Space3DRenderer : IDisposable
             }
         }
 
+        FieldLegend.AddLabels(cache, rect);
         scene.Models.Clear();
         if (solids.Indices.Length > 0)
         {
@@ -218,7 +219,14 @@ internal sealed class Space3DRenderer : IDisposable
                 }
                 else
                 {
-                    solids.Mesh(list.Vertices, list.Indices, item.First, item.Count, colour);
+                    if (item.Field != 0)
+                    {
+                        solids.FieldMesh(list, item);
+                    }
+                    else
+                    {
+                        solids.Mesh(list.Vertices, list.Indices, item.First, item.Count, colour);
+                    }
                 }
 
                 break;

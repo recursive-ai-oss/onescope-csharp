@@ -96,6 +96,12 @@ public struct DrawItem
     /// <summary>Second position (end of a line, arrow or capsule axis).</summary>
     public Vector3 B;
 
+    /// <summary>
+    /// Zero, or 1 plus the index in <see cref="DrawList.FieldBindings"/> of the scalar field that colours this item (a mesh from
+    /// <see cref="DrawList.FieldMesh"/> or a point from <see cref="DrawList.FieldPoints"/>). Renderers that ignore fields use <see cref="Color"/>.
+    /// </summary>
+    public int Field;
+
     /// <summary>Third position (triangles).</summary>
     public Vector3 C;
 
@@ -118,7 +124,7 @@ public struct DrawItem
 /// A list holds at most <see cref="MaxItems"/> items, <see cref="MaxVertices"/> mesh vertices and
 /// <see cref="MaxChars"/> label characters; anything past a limit is dropped and counted in <see cref="Dropped"/>.
 /// </summary>
-public sealed class DrawList
+public sealed partial class DrawList
 {
     /// <summary>The most items one list holds.</summary>
     public const int MaxItems = 1 << 21;
@@ -166,6 +172,7 @@ public sealed class DrawList
         _indexCount = 0;
         _charCount = 0;
         Dropped = 0;
+        ClearFields();
     }
 
     /// <summary>Adds a line segment.</summary>

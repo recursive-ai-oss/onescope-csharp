@@ -103,4 +103,28 @@ public sealed class SourceInfo
 
     /// <summary>The timeline tracks the source fills.</summary>
     public IReadOnlyList<TrackInfo> Tracks { get; init; } = [];
+
+    /// <summary>The scalar fields the source can paint (see <see cref="DrawList.FieldMesh"/>).</summary>
+    public IReadOnlyList<FieldInfo> Fields { get; init; } = [];
+
+    /// <summary>
+    /// How other sources' <see cref="EntityLink"/>s name this source. Defaults to <see cref="Name"/> when null or empty.
+    /// Give related sources distinct keys (for example the two worlds of a server).
+    /// </summary>
+    public string? LinkKey { get; init; }
+
+    /// <summary>The key links use for this source: <see cref="LinkKey"/>, else <see cref="Name"/>.</summary>
+    public string EffectiveLinkKey => string.IsNullOrEmpty(LinkKey) ? Name : LinkKey;
+
+    /// <summary>
+    /// Non-null for a ghost source: a pose cache with no simulation behind it. It can be scrubbed and drawn over a real source but never forked or poked.
+    /// </summary>
+    public GhostInfo? Ghost { get; init; }
 }
+
+/// <summary>Where a ghost source's poses came from, so the shell can offer the real simulation at the same frame. Every field may be empty.</summary>
+/// <param name="ModuleId">The <see cref="IScopeModule.Id"/> of the module that opens the real simulation.</param>
+/// <param name="LibraryVersion">The library version that produced the poses.</param>
+/// <param name="Scene">The scene file or name the poses were recorded from.</param>
+/// <param name="Replay">The replay file or name that produced the poses. The shell looks for it next to the cache.</param>
+public readonly record struct GhostInfo(string ModuleId, string LibraryVersion, string Scene, string Replay);

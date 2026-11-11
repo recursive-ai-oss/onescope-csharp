@@ -18,6 +18,24 @@ public sealed class TestModule : ILiveModule
     /// <summary>First entity id used by bodies; body i is <c>FirstBodyId + i</c>.</summary>
     public const ulong FirstBodyId = 100;
 
+    /// <summary>Overlay that paints <see cref="DensityField"/> over a grid on the floor.</summary>
+    public const int DensityOverlay = 4;
+
+    /// <summary>Overlay that paints <see cref="OccupancyField"/> over the same grid, one value per triangle.</summary>
+    public const int OccupancyOverlay = 5;
+
+    /// <summary>The link key of the world that gives a body away in a linked pair.</summary>
+    public const string LeftKey = "tm-left";
+
+    /// <summary>The link key of the world that receives the body.</summary>
+    public const string RightKey = "tm-right";
+
+    /// <summary>How close the bodies are, smoothly, from 0 (none within 3 m) up. One value per grid vertex.</summary>
+    public static readonly FieldInfo DensityField = new("density", "Body density", ColorMap.Viridis, 0, 2, "bodies");
+
+    /// <summary>How many live bodies are in each grid cell. One value per triangle.</summary>
+    public static readonly FieldInfo OccupancyField = new("occupancy", "Bodies per cell", ColorMap.Heat, 0, 4, "bodies");
+
     /// <summary>The root entity.</summary>
     public static readonly EntityId World = new(1);
 
@@ -81,8 +99,11 @@ public sealed class TestModule : ILiveModule
     public static TestSource CreateSource(string name, byte[] setup, Recording recording, ulong[]? hashes = null) =>
         new(name, setup, recording, hashes, null);
 
-    internal static SourceInfo MakeInfo(string name, int dimensions) => new()
+    internal static SourceInfo MakeInfo(string name, ReadOnlySpan<byte> setup) => MakeInfo(name, setup[0], setup.Length == TestFormat.LinkedSetupLength ? setup[6] : 0, setup.Length == TestFormat.LinkedSetupLength);
+
+    internal static SourceInfo MakeInfo(string name, int dimensions, int linkRole, bool fields = false) => new()
     {
+        LinkKey = linkRole switch { 1 => LeftKey, 2 => RightKey, _ => null },
         ModuleId = TestFormat.ModuleId,
         Name = name,
         Dimensions = dimensions,
@@ -105,7 +126,9 @@ public sealed class TestModule : ILiveModule
             new OverlayInfo(1, "Velocities", false),
             new OverlayInfo(2, "Bounds", false),
             new OverlayInfo(3, "Labels", false),
+            .. fields ? (OverlayInfo[])[new OverlayInfo(DensityOverlay, "Density field", false), new OverlayInfo(OccupancyOverlay, "Occupancy field", false)] : [],
         ],
+        Fields = fields ? [DensityField, OccupancyField] : [],
         Pokes =
         [
             new PokeInfo("impulse", "Impulse", [new ParamInfo("target", ValueKind.Entity), new ParamInfo("delta", ValueKind.Vector)]),
@@ -135,7 +158,7 @@ public sealed class TestSource : IScopeSource
         _base = baseSnapshot;
         Recording = recording;
         ExpectedHashes = hashes;
-        Info = TestModule.MakeInfo(name, setup[0]);
+        Info = TestModule.MakeInfo(name, setup);
     }
 
     /// <inheritdoc />

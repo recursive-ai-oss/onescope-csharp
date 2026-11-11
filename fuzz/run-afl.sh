@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Short SharpFuzz smoke run of the handshake and session parsers under AFL++.
-# usage: fuzz/run-afl.sh <work-dir> <seconds-per-target>
+# Short SharpFuzz smoke run of the handshake, session and pose-cache parsers under AFL++.
+# usage: [TARGETS="handshake session posecache"] fuzz/run-afl.sh <work-dir> <seconds-per-target>
 # Needs: the .NET SDK on PATH, curl, make, gcc. Builds AFL++ and the SharpFuzz tool into <work-dir> on first use.
 set -euo pipefail
 WORK=$(realpath -m "${1:?work dir}")
@@ -21,9 +21,10 @@ dotnet publish "$REPO/fuzz/AttachFuzz" -c Release -o app -v quiet -clp:NoSummary
 # Seeds first: instrumented assemblies only run under afl-fuzz.
 dotnet app/AttachFuzz.dll seeds seeds
 sf/sharpfuzz app/RecursiveAI.OneScope.Probe.dll >/dev/null
+sf/sharpfuzz app/RecursiveAI.OneScope.Sdk.dll >/dev/null
 sf/sharpfuzz app/RecursiveAI.OneScope.Attach.dll >/dev/null
 export AFL_SKIP_BIN_CHECK=1 AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1 AFL_SKIP_CPUFREQ=1 AFL_NO_AFFINITY=1 AFL_NO_UI=1
-for target in handshake session; do
+for target in ${TARGETS:-handshake session posecache}; do
   rm -rf "out-$target"
   AFLplusplus/afl-fuzz -i "seeds/$target" -o "out-$target" -t 10000 -m none -V "$SECS" -- dotnet app/AttachFuzz.dll "$target" >"afl-$target.log" 2>&1 || true
   echo "== $target"
