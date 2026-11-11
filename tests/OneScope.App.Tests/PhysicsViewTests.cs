@@ -213,4 +213,15 @@ public sealed class PhysicsViewTests
         Assert.False(string.IsNullOrEmpty(d.GetProperty("field").GetString()));
         Harness.Report($"{name} diff JSON: {d}");
     }
+
+    [Fact]
+    public void ProjectBeforeTheFirstFrameIsATypedErrorNotAnInfiniteNumber()
+    {
+        using Harness h = new Harness(bundled: true);
+        h.Call("open", $$"""{"path":{{Quote(Harness.Data("physics-3d.oppr"))}}}""");
+        long body = Bodies(h)[1];
+        Assert.Equal("rejected", Assert.Throws<OneGame.Control.ControlException>(() => h.Call("project", $$"""{"entity":{{body}},"view":0}""")).Code);
+        h.Call("capture_frame", """{"path":"layout.png"}""");
+        Assert.True(h.Call("project", $$"""{"entity":{{body}},"view":0}""").GetProperty("x").GetDouble() > 0);
+    }
 }
