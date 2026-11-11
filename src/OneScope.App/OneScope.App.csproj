@@ -1,5 +1,5 @@
 <Project>
-  <Import Project="Sdk.props" Sdk="RecursiveAI.OneGame.Sdk" Version="1.25.0" />
+  <Import Project="Sdk.props" Sdk="RecursiveAI.OneGame.Sdk" Version="1.25.1" />
   <PropertyGroup>
     <AssemblyName>onescope</AssemblyName>
     <RootNamespace>$(OneScopeRootNamespace).App</RootNamespace>
@@ -25,7 +25,7 @@
     <ProjectReference Include="..\OneScope.Probe\OneScope.Probe.csproj" />
     <InternalsVisibleTo Include="OneScope.App.Tests" />
   </ItemGroup>
-  <Import Project="Sdk.targets" Sdk="RecursiveAI.OneGame.Sdk" Version="1.25.0" />
+  <Import Project="Sdk.targets" Sdk="RecursiveAI.OneGame.Sdk" Version="1.25.1" />
   <!-- After the SDK's own settings: the app runs on CoreCLR because it loads modules by reflection, so it is not trimmed or compiled ahead of time. -->
   <PropertyGroup>
     <IsAotCompatible>false</IsAotCompatible>

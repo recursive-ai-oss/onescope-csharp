@@ -17,7 +17,7 @@ The first stable release of the `onescope` tool (`RecursiveAI.OneScope.Tool`): a
 - **MCP and CLI.** Every action is one operation with JSON results, reachable from the UI, the command line and MCP, with a window or headless. Headless captures (`capture_frame`, `capture_sequence`) are byte-identical from run to run on one renderer.
 - **Bundled modules.** `RecursiveAI.OnePhysics.Scope` 1.1.0 (2D and 3D worlds, contacts, joints, islands and sleep; contact-normal arrows scale with body size) and `RecursiveAI.OnePath.Scope` 1.0.0 (navmesh build stages stepped one at a time, paths and search frontiers, flow fields, crowds), on `RecursiveAI.OnePhysics` 1.0.0 and `RecursiveAI.OnePath` 1.2.0.
 - **Other modules** load from a path into their own collectible load context.
-- Built on `RecursiveAI.OneScope.Sdk`, `.Probe` and `.Attach` 1.0.0 and onegame 1.25.0.
+- Built on `RecursiveAI.OneScope.Sdk`, `.Probe` and `.Attach` 1.0.0 and onegame 1.25.1.
 
 ## [1.0.0] - 2026-11-11
 
