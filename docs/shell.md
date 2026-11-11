@@ -43,6 +43,8 @@ Hashes are 16 lowercase hex digits. Entity ids are the module's unsigned 64-bit 
 | `seek` | `step`, or `axis` + `position` (+ `source`) | `step`, `steps`, `sources[] {source, step, hash, viewAxis?, viewPosition?, viewHash?}` |
 | `step` | `delta`? (default 1, negative goes back), `axis`?, `source`? | as `seek`; the step is clamped to the recording |
 | `play` | `speed`? (steps per second, 0 pauses, negative reverses), `frames`? (run this many presentation frames now), `loop`? | `speed`, `playing`, `loop`, `frames`, `moved`, `step`, `hashes[]` |
+| `offset` | `source`?, `offset`? (integer; omit to report) | `source`, `offset`, `step` (shared), `sourceStep`, `start`, `steps`, `hash`. At shared step s the source shows its own step s + offset |
+| `close` | `source`? (default the active one) | `closed[] {source, label, fork}` (the source and every fork made from it, by their old numbers), `renumbered[] {from, to}`, `sources`, `active` (-1 when none are left), `views`, `step` |
 | `entities` | `source`?, `kind`?, `limit`? | `entities[] {id, parent, kind, name}`, `count`, `truncated` |
 | `inspect` | `entity`, `source`? | `entity`, `kind`, `name`, `properties[] {group, name, kind, value}`; also selects the entity in the shell |
 | `overlay` | `view`?, `overlay`? (name or id), `on`? (toggles when omitted), `wireframe`?, `grid`? | `view`, `kind`, `wireframe`, `grid`, `overlays[] {id, name, on}` |
@@ -63,6 +65,27 @@ Hashes are 16 lowercase hex digits. Entity ids are the module's unsigned 64-bit 
 
 onegame's own `info`, `ui_tree`, `ui_query`, `ui_click`, `ui_hit`, `ui_scale`, `input_pointer`, `input_key`, `input_text`, `window`, `render_graph`
 and `quit` are served unchanged (`docs/interfaces/control.md` in onegame).
+
+## Sources that number their steps differently
+
+Two runs of one replay can count differently (one library version starts at step 0, another at step 1). `offset` says how far a source's own step numbers run
+ahead of the shared cursor, so both views show the same moment; `compare` sets it for its pair. The shared axis then spans every source in shared numbers (it can start below 0).
+`sources` and `seek` report a non-zero offset next to the source's own step, and a fork inherits its parent's.
+
+```
+$ onescope offset '{"source":1,"offset":5}' --socket /run/user/1000/os.sock
+{"source":1,"offset":5,"step":105,"sourceStep":110,"start":-5,"steps":10000,"hash":"dad4cab43acbca19"}
+$ onescope seek '{"step":100}' --socket /run/user/1000/os.sock
+{"step":100,"start":-5,"steps":10000,"sources":[{"source":0,"step":100,"hash":"42065a69e337bef3"},{"source":1,"step":105,"offset":5,"hash":"dea099ed4b87dfcc"}]}
+```
+
+`close` removes a source and the forks made from it; the sources that remain keep their order and are numbered again from 0. Views of the closed sources go with them,
+and a compare pair that named one is forgotten. A live source's connection is dropped and the program is not told anything.
+
+```
+$ onescope close '{"source":1}' --socket /run/user/1000/os.sock
+{"closed":[{"source":1,"label":"run","fork":false},{"source":3,"label":"run fork 1 @50","fork":true}],"renumbered":[{"from":2,"to":1}],"sources":2,"active":0,"views":4,"step":50}
+```
 
 ## Forks and pokes
 
@@ -154,6 +177,13 @@ with the full number in `rowCount` (`truncated` says when the list is cut). With
 In the window, the **Compare** button shows a panel with the pair, whether the worlds agree at the cursor, **|< First / < Prev / Next > / Last >|**, and the differing fields;
 choosing a row selects that entity. The panel shows by itself for a fork, and when `compare` is called or one file is opened through two module copies.
 
+## Every operation
+
+`open`, `attach`, `follow`, `session_save`, `session_open`, `sources`, `seek`, `step`, `play`, `offset`, `close`, `timeline`, `entities`, `inspect`, `overlay`, `axes`,
+`findings`, `fork`, `poke`, `diff`, `compare`, `replay_save`, `pick`, `project`, `view`, `layout`, `capture_frame`, `capture_sequence` are in the table above.
+`field`, `links`, `selection`, `track`, `ghost`, `open_real` and `diff_shared` are in `fields-links-ghosts.md`. `info`, `ui_tree`, `ui_query`, `ui_click`, `ui_hit`, `ui_scale`, `input_pointer`,
+`input_key`, `input_text`, `window`, `render_graph` and `quit` are onegame's control operations, forwarded unchanged. `onescope --help` prints the same list, and a test keeps it equal to what the shell registers.
+
 ## Bundled modules
 
 The app carries the OnePhysics module (`RecursiveAI.OnePhysics.Scope`) and offers it first to every file, so `onescope open run.oppr` works with no
@@ -172,4 +202,4 @@ poke: drag an agent), `add_agent`, `remove_agent`, `stop_agent` and `teleport_ag
 for a session that holds a physics world and a crowd on one time axis.
 
 Until the module package is on nuget.org, restore needs the folder that holds it: set `ONESCOPE_FEEDS` to that folder (several are separated by `;`)
-before `dotnet restore`. The module was built against the first preview of the SDK; `DrawStyle` keeps its old four-argument constructor so such a build still loads.
+before `dotnet restore`. The navigation module was built against an early preview of the SDK; `DrawStyle` keeps its four-argument constructor so such a build still loads.

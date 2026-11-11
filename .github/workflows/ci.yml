@@ -1,0 +1,68 @@
+name: ci
+
+# Build and test on every push and pull request, on the three desktop systems.
+#
+# The build restores the physics and navigation modules and the libraries under them from nuget.org, so they must be
+# published there first. The first step says so plainly when one is missing, instead of failing in restore.
+#
+# Golden images come from the lavapipe software renderer. The Linux job installs it and compares pixels exactly. On macOS and
+# Windows the tests draw on the machine's own renderer, which differs in the last bits, so they check that three runs of
+# every capture are byte-identical and skip the pixel comparison with the goldens.
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Library packages are on nuget.org
+        shell: bash
+        run: bash tools/check-packages.sh
+
+      - name: Software Vulkan (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mesa-vulkan-drivers libvulkan1
+          echo "VK_DRIVER_FILES=/usr/share/vulkan/icd.d/lvp_icd.json" >> "$GITHUB_ENV"
+
+      - name: Build
+        run: dotnet build OneScope.slnx -c Release
+
+      - name: SDK tests
+        run: dotnet test --project tests/OneScope.Sdk.Tests -c Release --no-build
+
+      - name: Attach tests
+        run: dotnet test --project tests/OneScope.Attach.Tests -c Release --no-build
+
+      - name: App tests
+        run: dotnet test --project tests/OneScope.App.Tests -c Release --no-build
+
+      - name: Pack
+        if: runner.os == 'Linux'
+        run: |
+          dotnet pack src/OneScope.Sdk -c Release --no-build
+          dotnet pack src/OneScope.Probe -c Release --no-build
+          dotnet pack src/OneScope.Attach -c Release --no-build
+          dotnet pack src/OneScope.App -c Release --no-build

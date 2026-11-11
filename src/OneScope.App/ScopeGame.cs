@@ -266,7 +266,7 @@ internal sealed class ScopeGame : GameDefinition
         if (_shell.Sources.Count > 0)
         {
             SourceSession s = _shell.Sources[Math.Min(_shell.ActiveSource, _shell.Sources.Count - 1)];
-            RunOp(() => _shell.Fork(s, Math.Clamp(_shell.Step, s.History.StartStep, s.History.EndStep), addView: true));
+            RunOp(() => _shell.Fork(s, s.LocalClamped(_shell.Step), addView: true));
         }
     }
 

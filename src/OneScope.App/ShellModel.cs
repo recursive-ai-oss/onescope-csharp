@@ -76,7 +76,22 @@ internal sealed class SourceSession
         History = history;
     }
 
-    public int Index { get; }
+    public int Index { get; internal set; }
+
+    /// <summary>
+    /// How far this source's own step numbers run ahead of the shared cursor: at shared step s the source shows its step s + Offset. Zero unless a
+    /// pair of sources number their steps differently (one library version counts from 0, another from 1) and the shell was asked to line them up.
+    /// </summary>
+    public long Offset { get; set; }
+
+    /// <summary>The source's own step for a shared cursor step.</summary>
+    public long ToLocal(long shared) => shared + Offset;
+
+    /// <summary>The shared cursor step that shows the source's own step <paramref name="local"/>.</summary>
+    public long ToShared(long local) => local - Offset;
+
+    /// <summary>The source's step at the shared cursor step, held inside its recording.</summary>
+    public long LocalClamped(long shared) => Math.Clamp(shared + Offset, History.StartStep, History.EndStep);
 
     /// <summary>The source this one was forked from, or null for an opened file.</summary>
     public SourceSession? Parent { get; }
@@ -234,7 +249,7 @@ internal sealed partial class ShellModel
             long max = 0;
             foreach (SourceSession s in _sources)
             {
-                max = Math.Max(max, s.History.EndStep);
+                max = Math.Max(max, s.ToShared(s.History.EndStep));
             }
 
             return max;
@@ -249,7 +264,7 @@ internal sealed partial class ShellModel
             long min = long.MaxValue;
             foreach (SourceSession s in _sources)
             {
-                min = Math.Min(min, s.History.StartStep);
+                min = Math.Min(min, s.ToShared(s.History.StartStep));
             }
 
             return min == long.MaxValue ? 0 : min;
@@ -411,7 +426,7 @@ internal sealed partial class ShellModel
             ActiveSource = 0;
         }
 
-        session.History.Seek(Math.Clamp(Step, session.History.StartStep, session.History.EndStep));
+        session.History.Seek(session.LocalClamped(Step));
         AddDefaultViews(session);
     }
 
@@ -593,6 +608,7 @@ internal sealed partial class ShellModel
         var fork = new SourceSession(_sources.Count, parent.Path, parent.Module, branch.History.Source, branch.History, parent.KeyframeInterval, parent, branch)
         {
             Label = $"{parent.Root.Label} fork {ordinal} @{step}",
+            Offset = parent.Offset,
         };
         _sources.Add(fork);
         ActiveSource = fork.Index;
@@ -615,9 +631,10 @@ internal sealed partial class ShellModel
         }
 
         AddLog(fork.Index, "fork", $"{fork.Label} from source {parent.Index}");
-        if (step != Step)
+        long sharedStep = parent.ToShared(step);
+        if (sharedStep != Step)
         {
-            Seek(step);
+            Seek(sharedStep);
         }
         else
         {
@@ -739,7 +756,7 @@ internal sealed partial class ShellModel
         Step = step;
         foreach (SourceSession s in _sources)
         {
-            s.History.Seek(Math.Clamp(step, s.History.StartStep, s.History.EndStep));
+            s.History.Seek(s.LocalClamped(step));
         }
 
         FollowLinks();
@@ -904,7 +921,7 @@ internal sealed partial class ShellModel
         var rows = new List<LogRow>();
         foreach (SourceSession s in _sources)
         {
-            long limit = Math.Min(Step, s.History.EndStep);
+            long limit = Math.Min(s.ToLocal(Step), s.History.EndStep);
             foreach (TrackData t in s.History.Tracks)
             {
                 if (t.Info.Kind == TrackKind.Series)

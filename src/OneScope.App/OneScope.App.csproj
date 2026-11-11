@@ -9,7 +9,11 @@
     <ToolCommandName>onescope</ToolCommandName>
     <PackageId>$(OneScopePackagePrefix).Tool</PackageId>
     <Description>onescope: a viewer for the Recursive AI family's deterministic libraries. Scrub a replay, inspect any entity, capture frames, and drive it all over MCP.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="" />
+  </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="fonts\NotoSans-Regular.ttf" LogicalName="NotoSans-Regular.ttf" />
     <None Include="fonts\OFL.txt" Pack="true" PackagePath="" />

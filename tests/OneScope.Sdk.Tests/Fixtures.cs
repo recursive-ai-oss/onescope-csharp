@@ -37,6 +37,24 @@ internal static class Fixtures
         return w.WrittenSpan.ToArray();
     }
 
+    /// <summary>
+    /// The fewest bytes the calling thread allocated over any of up to <paramref name="rounds"/> runs of <paramref name="body"/>, stopping at the first run that
+    /// allocated nothing. The runtime's own work on this thread (promoting a method to optimised code, a collection another test starts) can add a few
+    /// thousand bytes to one run; code that really allocates does so in every run, so the smallest run is the one that tells.
+    /// </summary>
+    public static long SmallestAllocation(Action body, int rounds = 25)
+    {
+        long smallest = long.MaxValue;
+        for (int round = 0; round < rounds && smallest != 0; round++)
+        {
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            body();
+            smallest = Math.Min(smallest, GC.GetAllocatedBytesForCurrentThread() - before);
+        }
+
+        return smallest;
+    }
+
     public static void Report(string line)
     {
         string? path = Environment.GetEnvironmentVariable("ONESCOPE_TEST_REPORT");

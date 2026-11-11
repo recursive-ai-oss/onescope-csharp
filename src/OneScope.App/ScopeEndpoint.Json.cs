@@ -34,6 +34,11 @@ internal sealed partial class ScopeEndpoint
         w.WriteEndObject();
         w.WriteNumber("startStep", s.History.StartStep);
         w.WriteNumber("steps", s.History.EndStep);
+        if (s.Offset != 0)
+        {
+            w.WriteNumber("offset", s.Offset);
+        }
+
         WriteAxisList(w, "axes", s);
         w.WriteStartArray("overlays");
         foreach (OverlayInfo o in info.Overlays)
@@ -142,6 +147,11 @@ internal sealed partial class ScopeEndpoint
     {
         w.WriteNumber("source", s.Index);
         w.WriteNumber("step", s.History.CurrentStep);
+        if (s.Offset != 0)
+        {
+            w.WriteNumber("offset", s.Offset);
+        }
+
         w.WriteString("hash", JsonOut.Hex(s.History.StateHash));
         if (s.History.ViewAxis != AxisIds.Time && s.History.ViewPosition > 0)
         {

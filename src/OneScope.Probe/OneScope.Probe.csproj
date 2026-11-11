@@ -8,11 +8,15 @@
     <IsAotCompatible>true</IsAotCompatible>
     <IsTrimmable>true</IsTrimmable>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
-  <!-- Every pack is checked against the first preview, so a binary break for a module built on it is listed (and justified in
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="" />
+  </ItemGroup>
+  <!-- Every pack is checked against the last 0.x preview, so a binary break for a module built on it is listed (and justified in
        CompatibilitySuppressions.xml) rather than found at load time. The baseline comes from the local feed in ONESCOPE_FEEDS. -->
   <PropertyGroup Condition="'$(ONESCOPE_FEEDS)' != ''">
     <EnablePackageValidation>true</EnablePackageValidation>
-    <PackageValidationBaselineVersion>0.1.0-preview.1</PackageValidationBaselineVersion>
+    <PackageValidationBaselineVersion>0.3.0-preview.1</PackageValidationBaselineVersion>
   </PropertyGroup>
 </Project>

@@ -17,6 +17,14 @@ internal sealed partial class ShellModel
         set
         {
             _pair = value;
+            if (value is not null)
+            {
+                // A pair whose second source numbers its steps differently is shown at one moment: the shared cursor step s puts the
+                // first source at its step s and the second at s + the pair's offset.
+                value.Second.Offset = value.First.Offset + value.Offset;
+                SeekCore(Math.Clamp(Step, MinSteps, MaxSteps));
+            }
+
             Touch();
         }
     }

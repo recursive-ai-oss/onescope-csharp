@@ -91,17 +91,32 @@ public class DrawListTests
             h.World.Draw(list, request);
         }
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < 100; i++)
+        long allocated = Fixtures.SmallestAllocation(() =>
         {
-            list.Clear();
-            h.World.Draw(list, request);
-        }
-
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+            for (int i = 0; i < 100; i++)
+            {
+                list.Clear();
+                h.World.Draw(list, request);
+            }
+        });
         Assert.Equal(0, allocated);
         Assert.Equal(items, list.Items.Length);
         Fixtures.Report($"draw {dims}D: {items} items per frame, 0 bytes allocated over 100 frames after warm-up");
+    }
+
+    [Fact]
+    public void TheAllocationCheckStillSeesCodeThatReallyAllocates()
+    {
+        object? keep = null;
+        long smallest = Fixtures.SmallestAllocation(() =>
+        {
+            for (int i = 0; i < 100; i++)
+            {
+                keep = new byte[64];
+            }
+        }, rounds: 5);
+        Assert.NotNull(keep);
+        Assert.True(smallest >= 100 * 64, $"Expected at least {100 * 64} bytes, saw {smallest}.");
     }
 
     [Fact]

@@ -86,14 +86,15 @@ public class FieldLinkDiffTests
             list.FieldMesh(v, idx, values, FieldDomain.Vertex, Range, new DrawStyle(Color32.Grey));
         }
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < 1000; i++)
+        long allocated = Fixtures.SmallestAllocation(() =>
         {
-            list.Clear();
-            list.FieldMesh(v, idx, values, FieldDomain.Vertex, Range, new DrawStyle(Color32.Grey));
-        }
-
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+            for (int i = 0; i < 1000; i++)
+            {
+                list.Clear();
+                list.FieldMesh(v, idx, values, FieldDomain.Vertex, Range, new DrawStyle(Color32.Grey));
+            }
+        });
+        Assert.Equal(0, allocated);
     }
 
     private static TestWorld World(byte[] file, long steps)

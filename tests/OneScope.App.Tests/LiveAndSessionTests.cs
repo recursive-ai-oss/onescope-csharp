@@ -19,6 +19,12 @@ internal sealed class MiniHost : ISnapshotSource, IDisposable
     private volatile bool _stop;
     private int _steps;
 
+    /// <param name="dir">Where the probe's socket goes.</param>
+    /// <param name="stepMicros">
+    /// The pause after each step. Thread.Sleep works in whole milliseconds, so anything under 1000 is no pause at all and the host runs flat out
+    /// (the default: its steps are cheap, and most tests only need it to be running). A test that needs the host still stepping when a viewer
+    /// arrives asks for 1000 or more.
+    /// </param>
     public MiniHost(string dir, int stepMicros = 300)
     {
         _world = (TestWorld)_source.CreateWorld();
@@ -34,7 +40,7 @@ internal sealed class MiniHost : ISnapshotSource, IDisposable
                 _probe.Record(_source.Recording.InputAt(_steps).Span);
                 Hashes[_steps + 1] = _world.Hash();
                 Interlocked.Increment(ref _steps);
-                Thread.Sleep(TimeSpan.FromMicroseconds(stepMicros));
+                Thread.Sleep(stepMicros / 1000);
             }
         }) { IsBackground = true };
     }

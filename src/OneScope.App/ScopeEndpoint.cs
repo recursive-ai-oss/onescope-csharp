@@ -49,6 +49,10 @@ internal sealed partial class ScopeEndpoint : IControlEndpoint, IDisposable
             """{"type":"object","properties":{"step":{"type":"integer","minimum":0},"axis":{"type":"string"},"position":{"type":"integer","minimum":0},"source":{"type":"integer"}}}""", true, Seek);
         Add("step", "Step by delta (default 1; negative goes back) along the time axis, or along another axis for one source. On a fork at the end of its recording (the source argument, default the active source), going forward runs new steps in the fork with its queued pokes. Returns the step and hash.",
             """{"type":"object","properties":{"delta":{"type":"integer"},"axis":{"type":"string"},"source":{"type":"integer"}}}""", true, StepOp);
+        Add("offset", "Show or set how far a source's own step numbers run ahead of the shared cursor: at shared step s the source shows its step s + offset (default 0). For two sources that number steps differently, e.g. two library versions on one replay. The compare operation sets it for its pair. Optional: source (default the active source), offset (integer; omit to just report).",
+            """{"type":"object","properties":{"source":{"type":"integer"},"offset":{"type":"integer"}}}""", true, OffsetOp);
+        Add("close", "Close a source and every fork made from it. The sources left keep their order and are renumbered without gaps; the result lists what closed and each old to new number. A live source's connection is dropped (the program is unaffected). Optional: source (default the active source).",
+            """{"type":"object","properties":{"source":{"type":"integer"}}}""", true, CloseOp);
         Add("play", "Set the presentation speed in steps per second (0 pauses; negative plays backwards) and optionally run frames presentation frames at 60 per second right now. Speed never changes what any step computes.",
             """{"type":"object","properties":{"speed":{"type":"number"},"frames":{"type":"integer","minimum":0,"maximum":1000000},"loop":{"type":"boolean"}}}""", true, Play);
         Add("entities", "List a source's entities at the cursor: id, parent, kind, name. Optional: source, kind, limit.",

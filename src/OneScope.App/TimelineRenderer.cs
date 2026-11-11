@@ -79,6 +79,10 @@ internal static class TimelineRenderer
 
         y += TimelineLayout.RulerHeight;
 
+        // The ruler and the playhead use the shared cursor's numbers; everything the source recorded sits at its own, which may be shifted.
+        TimeRange shared = max;
+        max = new TimeRange(max.Min + s.Offset, max.Max + s.Offset);
+
         // Time axis: the played-through extent, keyframes, and the cursor.
         c.Text($"Time  {s.History.CurrentStep}/{s.History.EndStep}{(s.Live is null ? string.Empty : s.LiveEnded is null ? (s.Follow ? " live" : " live ||") : " ended")}", r.X + 8, y, 11, Ink);
         c.Fill(left, y, width, TimelineLayout.RowHeight - 2, Lane);
@@ -205,17 +209,17 @@ internal static class TimelineRenderer
         }
 
         // The playhead goes through every row.
-        float px = TimelineLayout.XOf(r, shell.Step, max);
+        float px = TimelineLayout.XOf(r, shell.Step, shared);
         c.Fill(px - 1, rowsTop - 2, 2, Math.Max(y - rowsTop + 2, 4), Playhead);
         c.ClearClip();
-        if (shell.Step >= max.Min && shell.Step <= max.Max)
+        if (shell.Step >= shared.Min && shell.Step <= shared.Max)
         {
             c.Text($"{shell.Step}", Math.Min(px + 4, r.Right - 60), r.Y + 4, 11, Playhead);
         }
 
         if (shell.TimelineZoomed)
         {
-            c.Text($"zoom {max.Min}..{max.Max}", r.Right - 150, r.Bottom - 14, 10, Dim);
+            c.Text($"zoom {shared.Min}..{shared.Max}", r.Right - 150, r.Bottom - 14, 10, Dim);
         }
     }
 

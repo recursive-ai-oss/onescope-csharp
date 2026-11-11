@@ -486,19 +486,21 @@ public sealed class UsabilityTests
     [Fact]
     public async Task AViewerThatReachesItsCapStopsWithAClearStateAndTheHostIsUnaffected()
     {
-        // The same host run twice: once with no viewer, once with a viewer that hits its cap. Its hashes and its pace are the same.
+        // The same host run twice: once with no viewer, once with a viewer that hits its cap. Its hashes are the same. The unwatched run
+        // goes through the whole recording, so a slow machine (where the viewer attaches late) can't outrun the baseline it is compared with.
         ulong[] baseline;
         string dir = LiveAndSessionTests.NewDir();
-        using (var alone = new MiniHost(dir))
+        const int Whole = 10000;
+        using (var alone = new MiniHost(dir, stepMicros: 0))
         {
             alone.Start();
-            LiveAndSessionTests.WaitFor(() => alone.Steps >= 2500, "the unwatched host");
+            LiveAndSessionTests.WaitFor(() => alone.Steps >= Whole, "the unwatched host");
             alone.Stop();
             baseline = alone.Hashes[..(alone.Steps + 1)];
         }
 
-        using var host = new MiniHost(dir);
-        using Harness h = new();
+        using Harness h = new(); // before the host starts: building a shell can take seconds on a machine with several GPUs
+        using var host = new MiniHost(dir, stepMicros: 1000);
         host.Start();
         LiveAndSessionTests.WaitFor(() => host.Steps >= 100, "the host to run");
         const long Cap = 8192;
@@ -520,7 +522,7 @@ public sealed class UsabilityTests
 
         // The host kept stepping after the viewer left, and its hashes are the unwatched run's.
         int atCap = host.Steps;
-        LiveAndSessionTests.WaitFor(() => host.Steps >= Math.Min(2500, atCap + 400), "the host to carry on");
+        LiveAndSessionTests.WaitFor(() => host.Steps >= Math.Min(Whole, atCap + 400), "the host to carry on");
         host.Stop();
         int common = Math.Min(baseline.Length, host.Steps + 1);
         Assert.True(common > atCap);
