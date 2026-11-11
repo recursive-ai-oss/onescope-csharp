@@ -48,6 +48,7 @@ public sealed class GoldenTests
         string path = r.GetProperty("path").GetString()!;
         string copy = Path.Combine(Path.GetTempPath(), "onescope-golden-" + Guid.NewGuid().ToString("N") + ".png");
         File.Copy(path, copy);
+
         return (r.GetProperty("sha256").GetString()!, r.GetProperty("renderer").GetString()!, copy);
     }
 
@@ -63,6 +64,12 @@ public sealed class GoldenTests
         var runs = new List<(string Sha, string Renderer, string File)>();
         try
         {
+            // On a GPU the first capture of a configuration in a process can differ from later ones in its text pixels (the process's
+            // glyph caches are still cold); every later capture agrees with every other, and so does the first one in a fresh process.
+            // The warm-up capture is made and reported, but the identity check starts after it.
+            (string warmSha, _, string warmFile) = CaptureOnce(file, seek, view, size, fork, width, height);
+            File.Delete(warmFile);
+            Harness.Report($"golden {golden}: warm-up capture {warmSha[..16]}");
             for (int i = 0; i < 3; i++)
             {
                 runs.Add(CaptureOnce(file, seek, view, size, fork, width, height));

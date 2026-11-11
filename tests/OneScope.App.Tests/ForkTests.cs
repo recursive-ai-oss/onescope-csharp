@@ -244,17 +244,10 @@ public sealed class ForkTests
         Assert.False(h.Shell.HighlightFor(h.Shell.Views[^1]).IsSome);
     }
 
-    private static int HighlightPixels(Harness h, string name, int view)
+    private static int HighlightPixels(Harness h, int view)
     {
         JsonElement r = h.Call("capture_frame", $$"""{"path":"hl.png","view":{{view}},"size":"480x360"}""");
-        string png = r.GetProperty("path").GetString()!;
-        if (Environment.GetEnvironmentVariable("ONESCOPE_TEST_FRAMES") is { Length: > 0 } keep)
-        {
-            Directory.CreateDirectory(keep);
-            File.Copy(png, Path.Combine(keep, $"highlight-{"x"}-{name}-v{view}.png"), true);
-        }
-
-        CapturedFrame frame = Png.Load(png);
+        CapturedFrame frame = Png.Load(r.GetProperty("path").GetString()!);
         int n = 0;
         for (int i = 0; i + 3 < frame.Rgba.Length; i += 4)
         {
@@ -277,7 +270,7 @@ public sealed class ForkTests
         h.Call("seek", """{"step":120}""");
         h.Call("view", """{"index":0,"target":[5000,1200,5000],"distance":6500,"halfHeight":3200,"yaw":35,"pitch":28}""");
         h.Call("view", """{"index":1,"target":[5000,3000,0],"distance":6500,"halfHeight":3400}""");
-        int before = HighlightPixels(h, file + "-before", view);
+        int before = HighlightPixels(h, view);
         // The body nearest the camera's target is in frame whatever size the capture is.
         var list = new OneScope.Sdk.DrawList();
         h.Shell.Source(0).History.View.Draw(list, new OneScope.Sdk.DrawRequest(h.Shell.Views[view].Overlays));
@@ -294,7 +287,7 @@ public sealed class ForkTests
         }
 
         h.Call("inspect", $$"""{"entity":{{body}}}""");
-        int after = HighlightPixels(h, file + "-after", view);
+        int after = HighlightPixels(h, view);
         Harness.Report($"highlight {file} view {view}: {before} outline pixels without selection, {after} with body {body} selected");
         Assert.Equal(0, before);
         Assert.True(after >= 20, $"expected an outline, found {after} pixels");
