@@ -30,7 +30,7 @@ cursor and `hash` alone, and reports `viewAxis`, `viewPosition` and `viewHash`.
 
 ## Operations
 
-Hashes are 16 lowercase hex digits. Entity ids are the module's integers. Every operation that names a `source` or `view` defaults to the active one.
+Hashes are 16 lowercase hex digits. Entity ids are the module's unsigned 64-bit integers; an argument that takes one accepts the JSON integer or the same digits as a string (some JSON clients read numbers as doubles, which cannot hold every id). Every operation that names a `source` or `view` defaults to the active one.
 
 | Operation | Arguments | Result |
 |---|---|---|
@@ -133,6 +133,15 @@ The app carries the OnePhysics module (`RecursiveAI.OnePhysics.Scope`) and offer
 overlays are shapes (coloured by state: static, kinematic, awake, asleep, sensor), bounds, contacts, joints and centres of mass; the pokes are `impulse`,
 `set_velocity`, `set_position` and `wake` on a body. A replay played here gives the library's own world hash after every step. `testdata/physics-*` holds
 small inputs written by `tools/GenPhysicsData` with the library's recorder, each replay with its per-step hashes (`.hashes`).
+
+The app also carries the OnePath module (`RecursiveAI.OnePath.Scope`), second in line. It opens crowd replays (`.oprp`, 2D when the mesh is flat, otherwise 3D),
+navigation-mesh build inputs (`.opbi`) and grid runs (`.opgr`). A build input has one empty time step and a `stage` axis of seven positions (voxels, filtered spans,
+compact spans, regions, contours, polygons, detail); a grid run has an `iteration` axis inside each step, the pops of the next slice of an A\*, JPS or flow-field
+search. Entities are the crowd, its agents and the mesh polygons; the stages; the grid's cells and its start and goal. The pokes are `set_target` (the drag
+poke: drag an agent), `add_agent`, `remove_agent`, `stop_agent` and `teleport_agent` on a crowd; `move_goal` (the drag poke), `move_start`, `set_wall` and
+`set_area` on a grid. `testdata/path-*` and `testdata/combo-*` come from `tools/GenPathData`, each crowd replay with the crowd's per-step hashes (`.hashes`);
+`samples/CrowdHost` is a program with a probe whose crowd the shell attaches to. The `combo-physics` and `combo-crowd` pair is one scenario run by both libraries,
+for a session that holds a physics world and a crowd on one time axis.
 
 Until the module package is on nuget.org, restore needs the folder that holds it: set `ONESCOPE_FEEDS` to that folder (several are separated by `;`)
 before `dotnet restore`. The module was built against the first preview of the SDK; `DrawStyle` keeps its old four-argument constructor so such a build still loads.

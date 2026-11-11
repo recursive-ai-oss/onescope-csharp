@@ -66,13 +66,13 @@ internal sealed partial class ScopeEndpoint
     private string Inspect(Args a)
     {
         SourceSession s = SourceArg(a);
-        long raw = a.RequiredLong("entity");
-        if (raw <= 0)
+        ulong raw = a.RequiredEntity("entity");
+        if (raw == 0)
         {
             throw new ControlException("bad_args", "Argument 'entity' must be a positive entity id.");
         }
 
-        var id = new EntityId((ulong)raw);
+        var id = new EntityId(raw);
         var props = new PropertyList();
         if (!s.History.View.Inspect(id, props))
         {

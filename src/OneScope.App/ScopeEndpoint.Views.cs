@@ -84,7 +84,7 @@ internal sealed partial class ScopeEndpoint
     private string ProjectOp(Args a)
     {
         RequireSources();
-        long raw = a.RequiredLong("entity");
+        ulong raw = a.RequiredEntity("entity");
         int index = a.Int("view") ?? -1;
         if (index < 0)
         {
@@ -102,7 +102,7 @@ internal sealed partial class ScopeEndpoint
 
         ViewState view = _shell.View(index);
         OneGame.UI.Rect rect = ViewRect(index);
-        if (raw <= 0 || !ViewPicking.Project(_shell, view, rect, new EntityId((ulong)raw), out Vector2 screen, out Vector3 world))
+        if (raw == 0 || !ViewPicking.Project(_shell, view, rect, new EntityId(raw), out Vector2 screen, out Vector3 world))
         {
             throw new ControlException("not_found", $"View {index} (source {view.Source}) draws nothing for entity {raw} at step {_shell.Source(view.Source).History.CurrentStep}; check the entity and that its overlay is on.");
         }

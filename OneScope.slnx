@@ -15,6 +15,7 @@
   <Folder Name="/samples/">
     <Project Path="samples/ProbeSample/ProbeSample.csproj" />
     <Project Path="samples/PhysicsHost/PhysicsHost.csproj" />
+    <Project Path="samples/CrowdHost/CrowdHost.csproj" />
   </Folder>
   <Folder Name="/fuzz/">
     <Project Path="fuzz/AttachFuzz/AttachFuzz.csproj" />
@@ -22,5 +23,6 @@
   <Folder Name="/tools/">
     <Project Path="tools/GenTestData/GenTestData.csproj" />
     <Project Path="tools/GenPhysicsData/GenPhysicsData.csproj" />
+    <Project Path="tools/GenPathData/GenPathData.csproj" />
   </Folder>
 </Solution>
