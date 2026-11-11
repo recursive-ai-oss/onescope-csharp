@@ -38,8 +38,9 @@ internal sealed class ViewCache : IDisposable
     public void Dispose()
     {
         Mesh?.Dispose();
-        Target?.Dispose();
+        // The texture only wraps the target's image, so it goes first.
         Texture?.Dispose();
+        Target?.Dispose();
         Mesh = null;
         Target = null;
         Texture = null;

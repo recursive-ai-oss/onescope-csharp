@@ -110,7 +110,7 @@ public sealed class CompareTests
     }
 
     [Fact]
-    public void TwoPublishedVersionsOfThePhysicsModuleAgreeAtEveryStep()
+    public void TwoCopiesOfThePhysicsModuleInSeparateContextsAgreeWithTheLibraryAtEveryStep()
     {
         foreach (string file in new[] { "physics-2d.oppr", "physics-3d.oppr" })
         {
@@ -120,8 +120,10 @@ public sealed class CompareTests
             JsonElement src = h.Call("sources");
             Assert.NotEqual(src.GetProperty("sources")[0].GetProperty("moduleAssembly").GetString(), src.GetProperty("sources")[1].GetProperty("moduleAssembly").GetString());
 
-            // Each copy reproduces the library's own recorded hash at every step. The older module numbers the replay from 0, the newer from the
-            // replay's own first step; the pair aligns them, so compare's step is the older one's and otherStep the newer one's.
+            // Each copy reproduces the library's own recorded hash at every step. Both are the same published build in their own load contexts
+            // (the second version of a module a test could load must be on nuget.org, and only the final release of each is), so they must
+            // agree everywhere; where two builds differ is proved with the test module's second rule (above). The pair still aligns the
+            // starts, which would shift the second copy if it numbered the replay differently.
             string[] recorded = File.ReadAllLines(Harness.Data(Path.ChangeExtension(file, ".hashes")));
             long start = src.GetProperty("sources")[0].GetProperty("startStep").GetInt64();
             for (int i = 0; i < recorded.Length; i++)

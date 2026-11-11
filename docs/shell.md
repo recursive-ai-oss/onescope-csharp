@@ -60,7 +60,7 @@ Hashes are 16 lowercase hex digits. Entity ids are the module's unsigned 64-bit 
 | `timeline` | `fit`? (`all` or `fork`, with `source`?), `from`? and `to`?, `zoom`? (factor above 1 shows fewer steps) with `center`?, `pan`? (steps); nothing reports | `from`, `to`, `zoomed`, `axisFrom`, `axisTo`, `step`. View only: no world moves |
 | `layout` | `entities`?, `inspector`?, `timeline`?, `log`?, `compare`? (booleans) | the panel states |
 | `compare` | `source`?, `other`?, `kind`? (`fork`, `versions`, `shared`), `map`? (`identity`, `links`), `offset`?, `step`?, `goto`? (`first`, `next`, `previous`, `last`), `limit`? (1 to 1000, default 50) | the pair, the agreement along the shared steps, and the differing fields at a step: see Compare |
-| `capture_frame` | `path`? (inside the output folder), `size`? (`720p`, `1080p`, `WxH`), `scale`?, `view`? (that view alone, full size), `presented`? | `path`, `width`, `height`, `scale`, `sha256`, `renderer`, `target`, `step`, `hashes[]`; over MCP the PNG travels as image content |
+| `capture_frame` | `path`? (inside the output folder), `size`? (`720p`, `1080p`, `WxH`), `scale`?, `view`? (that view alone, full size), `presented`? (the window's own frame; error `presented_unavailable` with the reason when the window cannot give one: minimized, covered, no swapchain image, surface lost; `rejected` when the shell is headless) | `path`, `width`, `height`, `scale`, `sha256`, `renderer`, `target`, `step`, `hashes[]`; over MCP the PNG travels as image content |
 | `capture_sequence` | `dir`, `count` (1 to 3600), `stride`? (default 1), `axis`?, `source`?, `size`?, `scale`?, `view`? | `dir`, `frames`, `ended`, `manifest`, `renderer`, `step`; `manifest.json` lists each frame's `step`, `position`, `hash` and `sha256` |
 
 onegame's own `info`, `ui_tree`, `ui_query`, `ui_click`, `ui_hit`, `ui_scale`, `input_pointer`, `input_key`, `input_text`, `window`, `render_graph`
@@ -147,10 +147,10 @@ falls back to the same default when the view draws nothing for it.
 
 The shell draws the panels with onegame's UI, the 2D views with the 2D renderer's canvas (rotated, rounded rectangles clipped to the view) and
 the 3D views with the 3D renderer: solids become one lit mesh, lines, points, arrows and wireframes are the renderer's debug lines, the ground
-grid is labelled in the source's length unit. A 3D view is rendered offscreen and placed in the layout by the 2D renderer, and the labels and
+grid is labelled in the source's length unit. A 3D view is rendered by the 3D renderer into an offscreen image that the 2D renderer samples directly (the picture never leaves the GPU), and and the labels and
 the timeline are painted over everything. Forks hang below the time axis as branches: a line from the step they were forked at to the end of their recording,
 joined to the time axis, with a marker at the divergence step. Captures of the same state are byte-identical run to run on the same renderer; the committed goldens
-in `tests/OneScope.App.Tests/goldens` come from lavapipe (`VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json`). Triangles and meshes in a 2D view
+in `tests/OneScope.App.Tests/goldens` come from lavapipe (`VK_DRIVER_FILES=/usr/share/vulkan/icd.d/lvp_icd.json`). Which graphics device a process uses is onegame's pick, in a fixed order, and `ONEGAME_GPU_ADAPTER` (`software`, `discrete`, `integrated` or part of a device name) pins it; the tests pin `software` on Linux and Windows unless it is set. Triangles and meshes in a 2D view
 are filled by one-pixel strips because the canvas has rectangles and rounded rectangles only.
 
 ## Compare

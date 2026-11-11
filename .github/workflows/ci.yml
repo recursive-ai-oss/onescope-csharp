@@ -11,6 +11,7 @@ name: ci
 
 on:
   push:
+    branches: [main, 'ci-check/**']
   pull_request:
 
 permissions:
@@ -30,9 +31,12 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
-      - uses: actions/checkout@v4
+      # Actions are pinned by commit: the release workflow, which can obtain a publishing key, uses the same ones.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           global-json-file: global.json
 

@@ -17,7 +17,6 @@ internal sealed class ScopeStage : Render2DStage, IFrameOverlay
     private Space3DRenderer? _space;
     private Renderer2D? _owner;
     private readonly Painter _painter;
-    private IFrameOverlay? _inner;
 
     public ScopeStage(HostResources resources, ShellModel shell)
         : base(resources)
@@ -27,15 +26,14 @@ internal sealed class ScopeStage : Render2DStage, IFrameOverlay
     }
 
     /// <summary>
-    /// Makes this stage the frame overlay. The control layer installs onegame's own debug panel as the overlay when it is created,
-    /// so this runs after it and keeps that panel drawing on top of the shell's labels and timeline.
+    /// Adds this stage to the stage's own overlay chain, which draws under onegame's development panel, so the shell's labels and timeline
+    /// never replace the panel. Safe to call twice.
     /// </summary>
     public void Attach()
     {
-        if (!ReferenceEquals(Overlay, this))
+        if (!Overlays.Contains(this))
         {
-            _inner = Overlay;
-            Overlay = this;
+            AddOverlay(this);
         }
     }
 
@@ -172,7 +170,6 @@ internal sealed class ScopeStage : Render2DStage, IFrameOverlay
             TimelineRenderer.Draw(canvas, timeline.AbsoluteBounds, _shell);
         }
 
-        _inner?.Draw(overlay);
     }
 
     /// <inheritdoc />

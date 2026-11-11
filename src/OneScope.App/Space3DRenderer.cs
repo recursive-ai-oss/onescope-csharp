@@ -8,7 +8,7 @@ using UiColor = OneGame.UI.Color;
 namespace OneScope.App;
 
 /// <summary>
-/// Draws a 3D view with onegame's 3D renderer into an offscreen target and hands the pixels to the 2D renderer, which places them in the
+/// Draws a 3D view with onegame's 3D renderer into an offscreen target that the 2D renderer samples, which places it in the
 /// shell's layout. Solids are one mesh; lines, points, arrows, wireframes and the grid are the renderer's debug lines.
 /// </summary>
 internal sealed class Space3DRenderer : IDisposable
@@ -34,15 +34,27 @@ internal sealed class Space3DRenderer : IDisposable
         return cam;
     }
 
-    /// <summary>Rebuilds the cache's scene from the source at its cursor and renders it. Returns the texture holding the picture.</summary>
+    /// <summary>Rebuilds the cache's scene from the source at its cursor and renders it. Returns the texture that shows the picture (it wraps the render target's image; nothing is read back).</summary>
     public Texture2D Render(Renderer2D r2, ViewCache cache, ViewState view, SourceSession source, OneGame.UI.Rect rect, EntityId selected = default)
     {
         int w = Math.Clamp((int)MathF.Round(rect.Width), 1, 4096);
         int h = Math.Clamp((int)MathF.Round(rect.Height), 1, 4096);
         if (cache.Target is null || cache.Target.Width != w || cache.Target.Height != h)
         {
-            cache.Target?.Dispose();
-            cache.Target = new Offscreen3D(_renderer, w, h);
+            // The target is drawn into by the 3D renderer and sampled by the 2D one, so the picture never leaves the GPU. The 2D texture only
+            // wraps the target's image; on a resize it is pointed at the new image before the old one is released.
+            Offscreen3D? old = cache.Target;
+            cache.Target = new Offscreen3D(_renderer, w, h, GpuFormat.Rgba8UnormSrgb, sampled: true);
+            if (cache.Texture is null)
+            {
+                cache.Texture = r2.WrapTexture(cache.Target.Target);
+            }
+            else
+            {
+                r2.RebindTexture(cache.Texture, cache.Target.Target);
+            }
+
+            old?.Dispose();
         }
 
         if (cache.Scene is null)
@@ -110,17 +122,8 @@ internal sealed class Space3DRenderer : IDisposable
             scene.Add(cache.Mesh.Model);
         }
 
-        byte[] pixels = cache.Target.Capture(scene);
-        if (cache.Texture is null)
-        {
-            cache.Texture = r2.CreateTexture(w, h, pixels);
-        }
-        else
-        {
-            r2.ReplaceTexture(cache.Texture, w, h, pixels);
-        }
-
-        return cache.Texture;
+        cache.Target.Render(scene);
+        return cache.Texture!;
     }
 
     private static bool Project(Matrix4x4 viewProj, Vector3 world, OneGame.UI.Rect rect, out Vector2 screen)

@@ -3,7 +3,8 @@
 # The bundled modules (RecursiveAI.OnePhysics.Scope, RecursiveAI.OnePath.Scope) and the libraries under them
 # (RecursiveAI.OnePhysics, RecursiveAI.OnePath) are pinned in Directory.Packages.props and in the tests' VersionOverride
 # attributes. Without this check a missing one shows up as a restore error that does not say what to do.
-# Run from the repository root: bash tools/check-packages.sh
+# Run from the repository root: bash tools/check-packages.sh [--warn]
+# With --warn a missing package is a warning and the exit status is still 1, for a workflow step that only decides what to do next.
 set -euo pipefail
 
 # One "Id Version" line per pin, from the central pins and from any project that overrides one.
@@ -36,7 +37,9 @@ done <<< "$pins"
 
 if [ "${#missing[@]}" -gt 0 ]; then
   list=$(IFS=,; echo "${missing[*]}")
-  echo "::error title=Packages missing from nuget.org::The build needs these packages and nuget.org does not have them yet: ${list//,/, }. Publish them first (or build locally with ONESCOPE_FEEDS pointing at a folder that holds them). This check exists so a missing package is not reported as a confusing restore error."
+  level=error
+  [ "${1:-}" = "--warn" ] && level=warning
+  echo "::$level title=Packages missing from nuget.org::The build needs these packages and nuget.org does not have them yet: ${list//,/, }. Publish them first (or build locally with ONESCOPE_FEEDS pointing at a folder that holds them). This check exists so a missing package is not reported as a confusing restore error."
   exit 1
 fi
 
