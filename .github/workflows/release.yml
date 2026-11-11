@@ -1,77 +1,208 @@
 name: release
 
-# Publishes the four packages when a version tag is pushed. There is no stored API key: nuget.org's trusted publishing
-# exchanges this run's identity for a short-lived key (NuGet/login). The nuget.org account name goes in the NUGET_USER
-# repository variable; docs/releasing.md has the one-time setup.
-
+# Publishes NuGet packages when a version tag is pushed. nuget.org trusts this workflow through Trusted Publishing: the job exchanges its
+# GitHub identity token for a short-lived API key, so no key is stored in the repository or its secrets.
+#
+# There are two tag forms, because the packages are released in an order and the tool can only be built after the modules it carries
+# are on nuget.org (docs/releasing.md):
+#   v<version>        publishes RecursiveAI.OneScope.Sdk, .Probe and .Attach only. Needs the libraries jobs of ci.yml green on the commit.
+#   tool-v<version>   publishes RecursiveAI.OneScope.Tool only. Needs the whole ci.yml run green on the commit, the app jobs included.
+#
+# Three jobs, each with only the permissions it needs:
+#   verify   the tag is well formed, on main, CI passed on that commit, the changelog has the version
+#   publish  build, test, pack, attest, push to nuget.org
+#   release  create the GitHub release with the changelog section as notes and the packages attached
+# The tag, changelog, version and CI checks live in tools/release-checks.sh, which can be run by hand.
 on:
   push:
-    tags:
-      - 'v*'
+    tags: ['v*', 'tool-v*']
 
-permissions:
-  contents: read
+permissions: {}
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+  DOTNET_NOLOGO: '1'
 
 jobs:
-  publish:
+  verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
-    environment: release
     permissions:
       contents: read
-      id-token: write
+      actions: read
+    outputs:
+      kind: ${{ steps.kind.outputs.kind }}
     steps:
-      - uses: actions/checkout@v4
+      # Actions are pinned by commit because the publish job can obtain a publishing key.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Tag is well formed
+        id: kind
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          tools/release-checks.sh tag-form "$TAG"
+          echo "kind=$(tools/release-checks.sh kind "$TAG")" >> "$GITHUB_OUTPUT"
+      - name: Tag is on main
+        run: |
+          # Only commits that are already on main are published.
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || { echo "::error::the tagged commit is not on main"; exit 1; }
+      - name: CI passed on the tagged commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: tools/release-checks.sh ci "$TAG" "$GITHUB_SHA"
+      - name: Changelog has a section for the version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: tools/release-checks.sh changelog "$TAG"
 
-      - uses: actions/setup-dotnet@v4
+  publish:
+    needs: verify
+    runs-on: ubuntu-latest
+    environment: nuget
+    permissions:
+      id-token: write       # nuget.org Trusted Publishing and the provenance attestation
+      attestations: write   # provenance for the packages
+      contents: read
+    env:
+      KIND: ${{ needs.verify.outputs.kind }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Keep build output out of the checkout
+        run: echo "ONESCOPE_ARTIFACTS=$RUNNER_TEMP/artifacts" >> "$GITHUB_ENV"
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           global-json-file: global.json
 
-      - name: Tag matches the version in Directory.Build.props
-        shell: bash
-        run: |
-          prefix=$(sed -n 's:.*<VersionPrefix>\(.*\)</VersionPrefix>.*:\1:p' Directory.Build.props)
-          suffix=$(sed -n 's:.*<VersionSuffix>\(.*\)</VersionSuffix>.*:\1:p' Directory.Build.props)
-          version="$prefix${suffix:+-$suffix}"
-          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
-            echo "::error::The tag is $GITHUB_REF_NAME but Directory.Build.props says version $version."
-            exit 1
-          fi
+      - name: Tag matches the package version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: tools/release-checks.sh version "$TAG"
 
-      - name: Library packages are on nuget.org
-        shell: bash
+      - name: The modules the tool carries are on nuget.org
+        if: env.KIND == 'tool'
         run: bash tools/check-packages.sh
 
-      - name: Software Vulkan
+      - name: Software Vulkan (the app's tests draw offscreen on it)
+        if: env.KIND == 'tool'
         run: |
           sudo apt-get update
           sudo apt-get install -y mesa-vulkan-drivers libvulkan1
           echo "VK_DRIVER_FILES=/usr/share/vulkan/icd.d/lvp_icd.json" >> "$GITHUB_ENV"
 
-      - name: Build and test
+      # A tag that does not build and pass its tests never publishes.
+      - name: Restore
         run: |
-          dotnet build OneScope.slnx -c Release
-          dotnet test --project tests/OneScope.Sdk.Tests -c Release --no-build
-          dotnet test --project tests/OneScope.Attach.Tests -c Release --no-build
-          dotnet test --project tests/OneScope.App.Tests -c Release --no-build
+          if [ "$KIND" = tool ]; then
+            dotnet restore tests/OneScope.App.Tests
+          else
+            dotnet restore tests/OneScope.Sdk.Tests
+            dotnet restore tests/OneScope.Attach.Tests
+          fi
+      - name: Build
+        run: |
+          if [ "$KIND" = tool ]; then
+            dotnet build tests/OneScope.App.Tests -c Release --no-restore
+          else
+            dotnet build tests/OneScope.Sdk.Tests -c Release --no-restore
+            dotnet build tests/OneScope.Attach.Tests -c Release --no-restore
+          fi
+      - name: Test
+        run: |
+          if [ "$KIND" = tool ]; then
+            dotnet test --project tests/OneScope.App.Tests -c Release --no-build --results-directory "$ONESCOPE_ARTIFACTS/TestResults"
+          else
+            dotnet test --project tests/OneScope.Sdk.Tests -c Release --no-build --results-directory "$ONESCOPE_ARTIFACTS/TestResults"
+            dotnet test --project tests/OneScope.Attach.Tests -c Release --no-build --results-directory "$ONESCOPE_ARTIFACTS/TestResults"
+          fi
 
       - name: Pack
+        # The shipped packages, from the binaries the tests ran on, all at the version of the tag. Symbols come out as .snupkg files.
         run: |
-          dotnet pack src/OneScope.Sdk -c Release --no-build
-          dotnet pack src/OneScope.Probe -c Release --no-build
-          dotnet pack src/OneScope.Attach -c Release --no-build
-          dotnet pack src/OneScope.App -c Release --no-build
-          ls artifacts/pack
+          version="${GITHUB_REF_NAME#tool-}"
+          version="${version#v}"
+          if [ "$KIND" = tool ]; then
+            ids="RecursiveAI.OneScope.Tool"
+            dotnet pack src/OneScope.App -c Release --no-build -o "$RUNNER_TEMP/packages"
+          else
+            ids="RecursiveAI.OneScope.Sdk RecursiveAI.OneScope.Probe RecursiveAI.OneScope.Attach"
+            dotnet pack src/OneScope.Sdk -c Release --no-build -o "$RUNNER_TEMP/packages"
+            dotnet pack src/OneScope.Probe -c Release --no-build -o "$RUNNER_TEMP/packages"
+            dotnet pack src/OneScope.Attach -c Release --no-build -o "$RUNNER_TEMP/packages"
+          fi
+          ls -l "$RUNNER_TEMP/packages"
+          # Each package must exist with its symbols, and the ones that build on the SDK must depend on this version of it.
+          for id in $ids; do
+            ls "$RUNNER_TEMP/packages/$id.$version.nupkg" "$RUNNER_TEMP/packages/$id.$version.snupkg"
+          done
+          if [ "$KIND" = libraries ]; then
+            id=RecursiveAI.OneScope.Attach
+            unzip -p "$RUNNER_TEMP/packages/$id.$version.nupkg" "$id.nuspec" | grep -q "id=\"RecursiveAI.OneScope.Sdk\" version=\"$version\""
+          fi
 
-      - name: Short-lived nuget.org key from trusted publishing
-        uses: NuGet/login@v1
-        id: login
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
-          user: ${{ vars.NUGET_USER }}
+          subject-path: |
+            ${{ runner.temp }}/packages/*.nupkg
+            ${{ runner.temp }}/packages/*.snupkg
+
+      - name: Keep the packages for the release job
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: packages
+          path: |
+            ${{ runner.temp }}/packages/*.nupkg
+            ${{ runner.temp }}/packages/*.snupkg
+          if-no-files-found: error
+
+      - name: Log in to nuget.org
+        id: login
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
+        with:
+          user: recursiveai.org
 
       - name: Push
-        run: >
-          dotnet nuget push "artifacts/pack/*.nupkg"
-          --api-key "${{ steps.login.outputs.NUGET_API_KEY }}"
-          --source https://api.nuget.org/v3/index.json
-          --skip-duplicate
+        env:
+          NUGET_API_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
+        run: |
+          # --no-symbols: pushing a .nupkg would otherwise also push the .snupkg beside it, and the next line pushes it again.
+          dotnet nuget push "$RUNNER_TEMP/packages/*.nupkg" --api-key "$NUGET_API_KEY" --no-symbols \
+            --source https://api.nuget.org/v3/index.json --skip-duplicate
+          dotnet nuget push "$RUNNER_TEMP/packages/*.snupkg" --api-key "$NUGET_API_KEY" \
+            --source https://api.nuget.org/v3/index.json --skip-duplicate
+
+  release:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write       # create the release
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: packages
+          path: packages
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          version="${TAG#tool-}"
+          version="${version#v}"
+          # The notes are the changelog section of this version.
+          tools/release-checks.sh notes "$TAG" > notes.md
+          flags=()
+          case "$version" in *-*) flags+=(--prerelease) ;; esac
+          gh release create "$TAG" --verify-tag --title "$TAG" --notes-file notes.md "${flags[@]}" packages/*

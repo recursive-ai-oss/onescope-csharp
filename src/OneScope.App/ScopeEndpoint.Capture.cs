@@ -42,6 +42,9 @@ internal sealed partial class ScopeEndpoint
         return new ControlResult(ReshapeCapture(result.Json, view), result.Png);
     }
 
+    /// <summary>Replaces the control layer's capture, so a test can make the window fail the way a real one does (minimized, covered).</summary>
+    internal Func<string, string?, ControlResult>? CaptureHook { get; set; }
+
     private ControlResult CaptureOne(int? view, string forwardedJson, bool presented)
     {
         int previousSolo = _shell.Solo;
@@ -55,7 +58,12 @@ internal sealed partial class ScopeEndpoint
                 _game.Redraw();
             }
 
-            return _surface.Invoke("capture_frame", forwardedJson);
+            return (CaptureHook ?? _surface.Invoke)("capture_frame", forwardedJson);
+        }
+        catch (PresentedCaptureException e)
+        {
+            // The window could not give a frame (minimized, covered, no swapchain image, lost surface): say why, so an agent can fix the window or capture offscreen.
+            throw new ControlException("presented_unavailable", $"The window's own frame could not be captured: {Explain(e.Reason)} Capture without 'presented' to draw offscreen instead.", e);
         }
         finally
         {
@@ -63,6 +71,16 @@ internal sealed partial class ScopeEndpoint
             _shell.Touch();
         }
     }
+
+    private static string Explain(PresentedCaptureFailure reason) => reason switch
+    {
+        PresentedCaptureFailure.NoWindow => "the shell has no native window (it runs headless).",
+        PresentedCaptureFailure.Minimized => "the window is minimized.",
+        PresentedCaptureFailure.WindowNotDrawn => "the window system has stopped drawing the window (it is covered or hidden).",
+        PresentedCaptureFailure.NoBackbuffer => "the swapchain gave no free image in time.",
+        PresentedCaptureFailure.SurfaceLost => "the window system took the surface; a new one is made on the next frame, so try again.",
+        _ => $"no frame was presented ({reason}).",
+    };
 
     private static string ForwardCaptureArgs(Args a, string? path)
     {

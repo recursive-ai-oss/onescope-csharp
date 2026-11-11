@@ -21,6 +21,9 @@
     <Authors>Recursive AI, LLC</Authors>
     <Copyright>Copyright (c) Recursive AI, LLC</Copyright>
     <PackageLicenseExpression>MIT OR Apache-2.0</PackageLicenseExpression>
+    <!-- Symbols travel as .snupkg files next to each package, so a debugger can step into the libraries. -->
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
   </PropertyGroup>
 
   <!-- Pre-release packages from a local folder: set ONESCOPE_FEEDS to one or more folders (semicolon-separated) before restoring. -->

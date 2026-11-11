@@ -16,21 +16,19 @@
     <ProjectReference Include="..\..\src\OneScope.Sdk\OneScope.Sdk.csproj" />
     <ProjectReference Include="..\..\src\OneScope.Probe\OneScope.Probe.csproj" />
     <ProjectReference Include="..\OneScope.TestModule\OneScope.TestModule.csproj" />
-    <!-- Other builds of modules, loaded from folders by the compare tests; built, not referenced. -->
+    <!-- Other copies and builds of modules, loaded from folders by the compare tests; built, not referenced. -->
     <ProjectReference Include="..\OneScope.TestModule.RuleB\OneScope.TestModule.RuleB.csproj" ReferenceOutputAssembly="false" />
-    <ProjectReference Include="..\PhysicsModuleA\PhysicsModuleA.csproj" ReferenceOutputAssembly="false" />
-    <ProjectReference Include="..\PhysicsModuleB\PhysicsModuleB.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
   <Target Name="CopyModuleBuilds" AfterTargets="Build">
     <ItemGroup>
       <RuleBFiles Include="$(OneScopeArtifacts)bin/OneScope.TestModule.RuleB/$(Configuration)/$(TargetFramework)/*" />
-      <PhysicsAFiles Include="$(OneScopeArtifacts)bin/PhysicsModuleA/$(Configuration)/$(TargetFramework)/*" />
-      <PhysicsBFiles Include="$(OneScopeArtifacts)bin/PhysicsModuleB/$(Configuration)/$(TargetFramework)/*" />
+      <!-- The physics module and what it brings, copied twice from the build the app already carries: the loader gives each folder its own context. -->
+      <PhysicsFiles Include="$(OutDir)RecursiveAI.OnePhysics.Scope.dll;$(OutDir)RecursiveAI.OnePhysics.dll;$(OutDir)RecursiveAI.OneMath.dll" />
     </ItemGroup>
     <Copy SourceFiles="$(OutDir)OneScope.TestModule.dll" DestinationFolder="$(OutDir)modules/test-rule-a" />
     <Copy SourceFiles="@(RuleBFiles)" DestinationFolder="$(OutDir)modules/test-rule-b" />
-    <Copy SourceFiles="@(PhysicsAFiles)" DestinationFolder="$(OutDir)modules/physics-a" />
-    <Copy SourceFiles="@(PhysicsBFiles)" DestinationFolder="$(OutDir)modules/physics-b" />
+    <Copy SourceFiles="@(PhysicsFiles)" DestinationFolder="$(OutDir)modules/physics-a" />
+    <Copy SourceFiles="@(PhysicsFiles)" DestinationFolder="$(OutDir)modules/physics-b" />
   </Target>
   <ItemGroup>
     <None Include="..\..\testdata\physics-*.*" Link="testdata\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
