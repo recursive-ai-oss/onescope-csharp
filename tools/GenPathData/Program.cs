@@ -185,6 +185,8 @@ static Grid Maze()
     return g;
 }
 
+// The search run moves its goal to (44, 3); that cell is a wall, which the search tolerates. The flow run moves to (44, 4), floor,
+// so its field stays complete after the edit.
 static List<IReadOnlyList<GridRunOp>> Edits(int steps, bool search)
 {
     var list = new List<IReadOnlyList<GridRunOp>>();
@@ -193,7 +195,7 @@ static List<IReadOnlyList<GridRunOp>> Edits(int steps, bool search)
         GridRunOp[] ops = i switch
         {
             10 => [GridRunOp.SetArea(24, 6, 255), GridRunOp.SetArea(24, 7, 255)],
-            25 => [GridRunOp.SetGoal(44, 3)],
+            25 => [GridRunOp.SetGoal(44, search ? 3 : 4)],
             40 => [GridRunOp.SetArea(24, 6, 0)],
             55 when search => [GridRunOp.SetStart(3, 28)],
             _ => [],

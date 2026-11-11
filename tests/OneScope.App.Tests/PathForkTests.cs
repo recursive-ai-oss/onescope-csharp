@@ -209,4 +209,22 @@ public sealed class PathForkTests
 
         Harness.Report("grid fork: dragged the goal marker for 4 moves (4 move_goal pokes); saved and reopened, 35 hashes equal");
     }
+
+    [Fact]
+    public void WallingEveryGoalOfAFlowFieldRaisesTheGoalBlockedFindingAndTheCommittedRunHasNone()
+    {
+        using Harness h = new Harness(960, 540, bundled: true);
+        h.Call("open", $$"""{"path":{{Q(Harness.Data("path-flow.opgr"))}}}""");
+        Assert.Equal(0, h.Call("findings").GetProperty("count").GetInt32());
+        h.Call("seek", """{"step":5}""");
+        int branch = h.Call("fork").GetProperty("branch").GetInt32();
+        h.Call("poke", $$"""{"source":{{branch}},"poke":"set_wall","args":{"cell":[45,16,0],"wall":true},"step":true}""");
+        h.Call("poke", $$"""{"source":{{branch}},"poke":"set_wall","args":{"cell":[2,30,0],"wall":true},"step":true}""");
+        h.Call("step", $$"""{"source":{{branch}},"delta":3}""");
+        JsonElement found = h.Call("findings", $$"""{"source":{{branch}}}""");
+        JsonElement finding = Assert.Single(found.GetProperty("findings").EnumerateArray());
+        Assert.Equal("flow.goal-blocked", finding.GetProperty("code").GetString());
+        Assert.Equal(0, h.Call("findings", """{"source":0}""").GetProperty("count").GetInt32());
+        Harness.Report($"flow fork: both goals walled -> finding {finding.GetProperty("code")} at step {finding.GetProperty("step")}; the committed run has none");
+    }
 }
