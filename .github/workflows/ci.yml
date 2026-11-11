@@ -92,8 +92,21 @@ jobs:
       - name: Software Vulkan (Linux)
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get update
-          sudo apt-get install -y mesa-vulkan-drivers libvulkan1
+          # The runner's package mirror (azure.archive.ubuntu.com) sometimes does not resolve from here. Use the first mirror
+          # whose name does resolve, and fail in minutes rather than after long retries.
+          mirror=""
+          for host in azure.archive.ubuntu.com archive.ubuntu.com mirrors.edge.kernel.org mirror.arizona.edu mirror.us.leaseweb.net; do
+            if getent hosts "$host" > /dev/null; then mirror="$host"; break; fi
+            echo "::warning::$host does not resolve"
+          done
+          if [ -z "$mirror" ]; then echo "::error::no Ubuntu package mirror resolves from this runner"; exit 1; fi
+          if [ "$mirror" != azure.archive.ubuntu.com ]; then
+            echo "using $mirror"
+            echo "https://$mirror/ubuntu/" | sudo tee /etc/apt/apt-mirrors.txt > /dev/null
+          fi
+          apt_options=(-o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20)
+          sudo apt-get "${apt_options[@]}" update
+          sudo apt-get "${apt_options[@]}" install -y mesa-vulkan-drivers libvulkan1
           echo "VK_DRIVER_FILES=/usr/share/vulkan/icd.d/lvp_icd.json" >> "$GITHUB_ENV"
 
       - name: Build

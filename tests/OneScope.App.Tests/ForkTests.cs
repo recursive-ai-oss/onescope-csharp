@@ -267,6 +267,7 @@ public sealed class ForkTests
     public void TheSelectedEntityIsOutlinedInTheViewAndNothingElseIs(string file, int view)
     {
         using Harness h = new Harness().Open(file);
+        h.RequireGraphicsDevice();
         h.Call("seek", """{"step":120}""");
         h.Call("view", """{"index":0,"target":[5000,1200,5000],"distance":6500,"halfHeight":3200,"yaw":35,"pitch":28}""");
         h.Call("view", """{"index":1,"target":[5000,3000,0],"distance":6500,"halfHeight":3400}""");

@@ -227,6 +227,7 @@ public sealed class PhysicsTests
             {
                 using Harness h = new Harness(960, 540, bundled: true);
                 h.Call("open", $$"""{"path":{{JsonSerializer.Serialize(Harness.Data("physics-3d-limits.oppr"))}}}""");
+                h.RequireGraphicsDevice();
                 h.Call("seek", """{"step":30}""");
                 h.Call("view", """{"index":0,"target":[0,3,0],"distance":17,"yaw":20,"pitch":15}""");
                 JsonElement overlays = h.Call("overlay", """{"view":0}""");

@@ -31,6 +31,7 @@ public sealed class DeviceTests
     public void TwoShellsInOneProcessDrawOnTheSameDevice()
     {
         using var first = new Harness().Open();
+        first.RequireGraphicsDevice();
         using var second = new Harness().Open();
         string a = AdapterOf(first);
         string b = AdapterOf(second);
