@@ -95,7 +95,7 @@ static int List(string? dir)
 static int View(string socket, string hashFile)
 {
     using LiveSession session = LiveSession.Connect(socket, [new TestModule()]);
-    Console.WriteLine($"attached to pid {session.Handshake.ProcessId} at host step {session.BaseStep}");
+    Console.WriteLine($"attached to pid {session.Handshake.ProcessId} at host step {session.History.StartStep}");
     while (true)
     {
         int n = session.Pump();
@@ -113,14 +113,14 @@ static int View(string socket, string hashFile)
     }
 
     var lines = new StringBuilder();
-    for (long j = 0; j <= session.History.StepCount; j++)
+    for (long j = session.History.StartStep; j <= session.History.EndStep; j++)
     {
         session.History.Seek(j);
-        lines.Append(session.BaseStep + j).Append(' ').Append(session.History.StateHash.ToString("x16", CultureInfo.InvariantCulture)).Append('\n');
+        lines.Append(j).Append(' ').Append(session.History.StateHash.ToString("x16", CultureInfo.InvariantCulture)).Append('\n');
     }
 
     File.WriteAllText(hashFile, lines.ToString());
-    Console.WriteLine($"stream {session.State}; {session.History.StepCount} steps, host steps {session.BaseStep} to {session.BaseStep + session.History.StepCount}");
+    Console.WriteLine($"stream {session.State}; {session.History.StepCount} steps, host steps {session.History.StartStep} to {session.History.EndStep}");
     return 0;
 }
 

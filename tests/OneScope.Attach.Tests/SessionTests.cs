@@ -19,7 +19,7 @@ public class SessionTests
     private static (byte[] Session, ulong[] ForkHashes, long Divergence) MakeSessionWithFork()
     {
         TestSource source = Support.OpenLong();
-        var history = new History(source, new HistoryOptions { KeyframeInterval = 32 });
+        var history = new History(source, new ScopeHistoryOptions { KeyframeInterval = 32 });
         history.Seek(1000);
         Branch branch = history.Fork(1000);
         var forkHashes = new List<ulong>();

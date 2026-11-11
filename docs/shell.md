@@ -7,6 +7,9 @@ operation, and the operations are the same from the window, the command line and
 
 ```
 onescope open <file> [--module <dll>]... [--headless] [--live [path]] [--run "<op> [json]"]... [--size WxH] [--artifacts <dir>]
+onescope open <session.oscope>                                     # reopen a saved session
+onescope attach                                                    # list running programs that have a probe, as JSON
+onescope attach <pid|socket> [--dir <probe dir>] [same options as open]   # open the shell on a running program's live stream
 onescope <operation> [json | --name value ...] --socket <path>     # drive a running shell, prints the operation's JSON
 onescope mcp --socket <path>                                       # stdio MCP bridge for an agent
 ```
@@ -19,7 +22,7 @@ Exit codes: 0 ok, 1 an operation failed, 2 usage, 4 could not run.
 
 ## Time
 
-Time is the step index. `seek` moves every source to the same step (a source shorter than the step stops at its end) and lands on exactly the
+Time is the step index. `seek` moves every source to the same step (a source that ends or starts elsewhere stops at its end or start) and lands on exactly the
 state that stepping straight there gives, so the `hash` in a result is the module's world hash at that step. Playback speed (`play`) is
 presentation only: it counts presentation frames at 60 per second, never a clock, and only decides which step the next frame shows.
 A source's other axes (`axes`) are positions inside one step; `seek` with `axis` and `position` moves a scratch view and leaves the time
@@ -32,7 +35,11 @@ Hashes are 16 lowercase hex digits. Entity ids are the module's integers. Every 
 | Operation | Arguments | Result |
 |---|---|---|
 | `open` | `path`, `module`?, `moduleAssembly`?, `keyframeInterval`?, `scan`? | the new source: `source`, `name`, `path`, `module`, `dimensions`, `unit {name, metres}`, `steps`, `axes`, `overlays`, `tracks`, `pokes`, `step`, `hash`, `keyframeInterval`, `scannedThrough`, `views` |
-| `sources` | | `step`, `steps`, `speed`, `sources[]` (the `open` fields plus `keyframes`, `keyframeBytes`, `findings`) |
+| `sources` | | `step`, `start`, `steps`, `speed`, `sources[]` (the `open` fields plus `keyframes`, `keyframeBytes`, `findings`, and for a live source `live {state, endedBecause?, follow, hostPid, library, format, firstStep, newestStep}`, and when the file recorded hashes `recordedHashes {through, matches: all|so far|no, firstMismatch?}`) |
+| `attach` | none: list. `pid` or `socket` to connect; `dir`?, `keyframeInterval`?, `moduleAssembly`? | list: `probes[] {pid, socket, module, library, format, moduleLoaded}`, `removedStale[]`, `unreadable[]`. Connect: the new source as for `open`, plus `live`. Errors: `not_found`, `timeout`, `bad_stream`, `no_module`, `bad_format` |
+| `follow` | `source`? (default the first live one), `on`? | `source`, `live`, `step`; on moves the cursor to the newest step |
+| `session_save` | `path` (inside the output folder), `embed`? (embed opened files too) | `path`, `bytes`, `sha256`, `cursor`, `sources[] {source, name, kind: referenced\|embedded, live, parent?, forkStep?, bytes}`, `layoutBytes` |
+| `session_open` | `path`, `moduleAssembly`? | `path`, `step`, `views`, `sources[] {source, label, module, startStep, steps, step, hash, parent?, forkStep?, divergence?}`. Replaces everything open; nothing changes on failure (`not_found`, `bad_session`) |
 | `seek` | `step`, or `axis` + `position` (+ `source`) | `step`, `steps`, `sources[] {source, step, hash, viewAxis?, viewPosition?, viewHash?}` |
 | `step` | `delta`? (default 1, negative goes back), `axis`?, `source`? | as `seek`; the step is clamped to the recording |
 | `play` | `speed`? (steps per second, 0 pauses, negative reverses), `frames`? (run this many presentation frames now), `loop`? | `speed`, `playing`, `loop`, `frames`, `moved`, `step`, `hashes[]` |
@@ -70,8 +77,19 @@ on the plane through the grabbed point facing the camera in 3D), and releasing e
 agent the same hit test and the pixel to press, so it can script a drag with `input_pointer`.
 
 Error codes: `bad_args` (the message names the argument and what it must be), `not_found` (a file, source, view, entity or overlay),
-`no_source`, `no_module`, `bad_format` (the file is not one any loaded module opens; the message names the file and each module's complaint),
+`no_source`, `no_module`, `bad_stream`, `timeout`, `bad_session`, `bad_format` (the file is not one any loaded module opens; the message names the file and each module's complaint),
 `bad_module`, `too_large`, `path_outside` (an output path leaving the output folder), `rejected`, `read_only` (poking an opened file), `unknown_op`.
+
+## Live sources and sessions
+
+`attach` makes a running program's probe stream a source whose steps are the host's step numbers (`startStep` is the host's step at the attach); it plays,
+scrubs and forks like a file, and its history keeps growing while you scrub (`follow` decides whether the cursor goes with it). `session_save` writes
+the open sources, the cursor and the layout to a `.oscope` file (format in `session-file.md`): opened files by path and SHA-256, forks and live sources embedded
+with the history received so far. `session_open` (or `onescope open x.oscope`) replaces the shell's state with it: forks come back as working forks that can be poked and
+stepped again, and views, cameras, panels, selection and the event log come back as they were, so a capture taken after reopening is byte-identical to one taken before saving.
+The layout is a small JSON object (`version 1`: panels, active source and view, selection, speed, source labels, views with cameras, log rows); a layout that is not
+valid, or that points at a source or view that is not there, is refused as `bad_session` and leaves the shell as it was. Other errors: `bad_session` also covers a
+malformed or hostile session file, a missing module, or a referenced file that changed.
 
 ## Pictures
 

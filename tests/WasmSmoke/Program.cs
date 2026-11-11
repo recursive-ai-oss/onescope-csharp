@@ -8,7 +8,7 @@ using OneScope.TestModule;
 byte[] bytes = TestReplayBuilder.Build(dimensions: 2, bodies: 8, seed: 5, steps: 600);
 var module = new TestModule();
 var source = (TestSource)module.Open(bytes, "wasm-smoke");
-var history = new History(source, new HistoryOptions { KeyframeInterval = 32 });
+var history = new History(source, new ScopeHistoryOptions { KeyframeInterval = 32 });
 ulong[] expected = source.ExpectedHashes!;
 history.Seek(500);
 history.Seek(40);

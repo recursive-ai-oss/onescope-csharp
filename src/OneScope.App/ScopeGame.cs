@@ -105,12 +105,13 @@ internal sealed class ScopeGame : GameDefinition
         Element toolbar = Ui.Row(
                 Ui.Label("onescope").FontSize(Length.Px(14)).TextColor(UiColor.Hex("#dfe4ee")),
                 Ui.Label("").Named("source-label").BindText(() => shell.Version, _ => SourceText()).Margin(0, 10),
-                UiKit.Button("|<", () => shell.Seek(0), "seek-start"),
+                UiKit.Button("|<", () => shell.Seek(shell.MinSteps), "seek-start"),
                 UiKit.Button("<", () => Nudge(-1), "step-back"),
                 UiKit.ToggleButton("Play", () => shell.SpeedMilliStepsPerSecond != 0, on => shell.SetSpeed(on ? 60_000 : 0), "play"),
                 UiKit.Button(">", () => Nudge(1), "step-forward"),
                 UiKit.Button(">|", () => shell.Seek(shell.MaxSteps), "seek-end"),
                 UiKit.Button("Fork", ForkActive, "fork"),
+                UiKit.ToggleButton("Live", () => shell.Sources.Any(x => x.Live is not null && x.Follow), on => SetFollow(on), "follow-live").BindVisible(() => shell.HasLive),
                 Ui.Label("").Named("step-label").BindText(() => shell.Version, _ => $"step {shell.Step} / {shell.MaxSteps}").Margin(0, 10),
                 Ui.Each(OverlayChoices, c => UiKit.ToggleButton(c.Name, () => OverlayOn(c.Id), on => SetOverlay(c.Id, on), "overlay/" + c.Id)),
                 Ui.Spacer(),
@@ -211,7 +212,8 @@ internal sealed class ScopeGame : GameDefinition
         }
 
         SourceSession s = _shell.Sources[Math.Min(_shell.ActiveSource, _shell.Sources.Count - 1)];
-        return $"{s.Label}  ·  {s.Info.Dimensions}D  ·  {s.Info.Unit.Name}";
+        string live = s.Live is null ? string.Empty : s.LiveEnded is null ? (s.Follow ? "  ·  live" : "  ·  live (paused)") : "  ·  stream ended";
+        return $"{s.Label}  ·  {s.Info.Dimensions}D  ·  {s.Info.Unit.Name}{live}";
     }
 
     private static string LogText(LogRow r) => $"{r.Step,7}  {r.Kind,-7} {r.Text}";
@@ -224,13 +226,22 @@ internal sealed class ScopeGame : GameDefinition
         }
     }
 
+    /// <summary>The toolbar's live toggle: follow the newest step of every live source, or stay where the cursor is.</summary>
+    private void SetFollow(bool on)
+    {
+        foreach (SourceSession s in _shell.Sources.Where(x => x.Live is not null).ToList())
+        {
+            RunOp(() => _shell.SetFollow(s, on));
+        }
+    }
+
     /// <summary>Forks the active source at the shared cursor.</summary>
     private void ForkActive()
     {
         if (_shell.Sources.Count > 0)
         {
             SourceSession s = _shell.Sources[Math.Min(_shell.ActiveSource, _shell.Sources.Count - 1)];
-            RunOp(() => _shell.Fork(s, Math.Min(_shell.Step, s.History.StepCount), addView: true));
+            RunOp(() => _shell.Fork(s, Math.Clamp(_shell.Step, s.History.StartStep, s.History.EndStep), addView: true));
         }
     }
 
@@ -363,7 +374,7 @@ internal sealed class ScopeGame : GameDefinition
         if (source.IsFork && source.DragPoke is { } poke)
         {
             // Dragging pokes at the end of the fork's recording, so a fork scrubbed back first runs forward to its end.
-            RunOp(() => _shell.Seek(source.History.StepCount));
+            RunOp(() => _shell.Seek(source.History.EndStep));
             _drag = new Dragged(source, poke, hit.Entity, hit.Point, hit.PlaneNormal);
         }
     }
@@ -435,7 +446,7 @@ internal sealed class ScopeGame : GameDefinition
 
         if (_shell.Sources.Count > 0)
         {
-            _shell.Seek(TimelineLayout.StepAt(element.AbsoluteBounds, ev.X, _shell.MaxSteps));
+            _shell.Seek(TimelineLayout.StepAt(element.AbsoluteBounds, ev.X, new TimeRange(_shell.MinSteps, _shell.MaxSteps)));
         }
 
         return true;
@@ -453,7 +464,7 @@ internal sealed class ScopeGame : GameDefinition
                 Nudge(big);
                 return true;
             case "Home":
-                Nudge(-_shell.MaxSteps);
+                Nudge(_shell.MinSteps - _shell.MaxSteps);
                 return true;
             case "End":
                 Nudge(_shell.MaxSteps);

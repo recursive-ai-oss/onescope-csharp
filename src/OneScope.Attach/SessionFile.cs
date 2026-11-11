@@ -71,7 +71,7 @@ public sealed class SessionSource
     public byte[]? Sha256 { get; }
 
     /// <summary>Embeds a source by writing its replay.</summary>
-    public static SessionSource Embed(IScopeSource source, int keyframeInterval = HistoryOptions.DefaultKeyframeInterval)
+    public static SessionSource Embed(IScopeSource source, int keyframeInterval = ScopeHistoryOptions.DefaultKeyframeInterval)
     {
         ArgumentNullException.ThrowIfNull(source);
         var w = new ArrayBufferWriter<byte>();
@@ -80,7 +80,7 @@ public sealed class SessionSource
     }
 
     /// <summary>Embeds a fork: <paramref name="source"/> is the branch's source (its recording holds the pokes), forked from the source at <paramref name="parentIndex"/> at <paramref name="forkStep"/>.</summary>
-    public static SessionSource EmbedFork(IScopeSource source, int parentIndex, long forkStep, int keyframeInterval = HistoryOptions.DefaultKeyframeInterval)
+    public static SessionSource EmbedFork(IScopeSource source, int parentIndex, long forkStep, int keyframeInterval = ScopeHistoryOptions.DefaultKeyframeInterval)
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentOutOfRangeException.ThrowIfNegative(parentIndex);
@@ -91,7 +91,7 @@ public sealed class SessionSource
     }
 
     /// <summary>Refers to a file, recording its hash from <paramref name="fileBytes"/> (the bytes the source was opened from).</summary>
-    public static SessionSource Reference(string moduleId, string name, string path, ReadOnlySpan<byte> fileBytes, int keyframeInterval = HistoryOptions.DefaultKeyframeInterval)
+    public static SessionSource Reference(string moduleId, string name, string path, ReadOnlySpan<byte> fileBytes, int keyframeInterval = ScopeHistoryOptions.DefaultKeyframeInterval)
     {
         ArgumentNullException.ThrowIfNull(moduleId);
         ArgumentNullException.ThrowIfNull(name);

@@ -55,22 +55,17 @@ public sealed class TestWorld : IScopeWorld
     }
 
     /// <inheritdoc />
-    public long Step => _step - _base;
+    public long Step => _step;
 
-    /// <summary>
-    /// Makes a world that starts from a host snapshot taken at host step S: <see cref="Step"/> reads 0 there while the hash and snapshots
-    /// keep using the host's step, so a viewer's step j hashes like the host's step S + j.
-    /// </summary>
+    /// <summary>Makes a world that starts from a host snapshot taken at host step S; its <see cref="Step"/> reads S there.</summary>
     public static TestWorld FromStart(ReadOnlySpan<byte> setup, ReadOnlySpan<byte> snapshot)
     {
         var world = new TestWorld(setup);
         world.Restore(snapshot);
-        world._base = world._step;
         return world;
     }
 
     private long _step;
-    private long _base;
 
     private static uint Next(ref uint state)
     {
@@ -365,9 +360,9 @@ public sealed class TestWorld : IScopeWorld
         }
 
         long step = BinaryPrimitives.ReadInt64LittleEndian(snapshot);
-        if (step < _base)
+        if (step < 0)
         {
-            throw new ScopeFormatException("snapshot", $"expected a step of {_base} or more at offset 0, found {step}.");
+            throw new ScopeFormatException("snapshot", $"expected a step of 0 or more at offset 0, found {step}.");
         }
 
         int pos;

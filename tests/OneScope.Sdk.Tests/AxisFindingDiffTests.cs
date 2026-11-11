@@ -23,7 +23,7 @@ public class AxisFindingDiffTests
     public void StageAxisIsExactByAnyPathAndLeavesTimeAlone()
     {
         const string stage = TestModule.TestModule.StageAxis;
-        var h = new History(Fixtures.OpenLong(), new HistoryOptions { KeyframeInterval = 64 });
+        var h = new History(Fixtures.OpenLong(), new ScopeHistoryOptions { KeyframeInterval = 64 });
         var lines = new List<string>();
         foreach (long step in new long[] { 0, 1, 63, 64, 65, 4321, 9999 })
         {

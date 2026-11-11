@@ -76,7 +76,7 @@ public class LiveTests
         PumpToEnd(viewer);
 
         Assert.Equal(ClientState.Ended, viewer.State);
-        long baseStep = viewer.BaseStep;
+        long baseStep = viewer.History.StartStep;
         if (atStart)
         {
             Assert.Equal(0, baseStep);
@@ -89,14 +89,14 @@ public class LiveTests
         Assert.Equal(host.Steps - baseStep, viewer.History.StepCount);
 
         var lines = new List<string> { $"live attach {(atStart ? "at step 0" : "mid-run")}: base step {baseStep}, {viewer.History.StepCount} viewer steps; host hash vs viewer hash" };
-        for (long j = 0; j <= viewer.History.StepCount; j++)
+        for (long j = baseStep; j <= viewer.History.EndStep; j++)
         {
             viewer.History.Seek(j);
             ulong local = viewer.History.StateHash;
-            Assert.Equal(host.Hashes[baseStep + j], local);
-            if (j % 500 == 0 || j == viewer.History.StepCount)
+            Assert.Equal(host.Hashes[j], local);
+            if (j % 500 == 0 || j == viewer.History.EndStep)
             {
-                lines.Add($"  host step {baseStep + j,5}  host {host.Hashes[baseStep + j]:x16}  viewer step {j,5}  viewer {local:x16}");
+                lines.Add($"  host step {j,5}  host {host.Hashes[j]:x16}  viewer step {j,5}  viewer {local:x16}");
             }
         }
 
@@ -183,11 +183,11 @@ public class LiveTests
         await c2;
         using LiveSession viewer = second!;
         PumpToEnd(viewer);
-        Assert.True(viewer.BaseStep > 1000);
-        for (long j = 0; j <= viewer.History.StepCount; j += 7)
+        Assert.True(viewer.History.StartStep > 1000);
+        for (long j = viewer.History.StartStep; j <= viewer.History.EndStep; j += 7)
         {
             viewer.History.Seek(j);
-            Assert.Equal(host.Hashes[viewer.BaseStep + j], viewer.History.StateHash);
+            Assert.Equal(host.Hashes[j], viewer.History.StateHash);
         }
 
         Directory.Delete(dir, true);
