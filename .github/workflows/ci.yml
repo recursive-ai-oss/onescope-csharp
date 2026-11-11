@@ -102,7 +102,7 @@ jobs:
           if [ -z "$mirror" ]; then echo "::error::no Ubuntu package mirror resolves from this runner"; exit 1; fi
           if [ "$mirror" != azure.archive.ubuntu.com ]; then
             echo "using $mirror"
-            echo "http://$mirror/ubuntu/" | sudo tee /etc/apt/apt-mirrors.txt > /dev/null
+            echo "https://$mirror/ubuntu/" | sudo tee /etc/apt/apt-mirrors.txt > /dev/null
           fi
           apt_options=(-o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20)
           sudo apt-get "${apt_options[@]}" update
