@@ -9,7 +9,7 @@ magic            4 bytes   "OSPC"
 version          u16       1
 flags            u16       0 (any other value is an error)
 dimensions       u8        2 or 3
-reserved         u8 + u16  zero (written as zero, not checked)
+reserved         u8 + u16  zero (any other value is an error, so a parsed cache always writes back to the same bytes)
 entity count     u32       1 to 65 536
 frame count      u32       1 to 4 194 304
 start step       i64       0 or more

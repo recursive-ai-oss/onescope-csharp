@@ -176,6 +176,15 @@ public class PoseCacheTests
         Assert.Equal(2, ok.FrameCount);
     }
 
+    [Theory]
+    [InlineData("fuzz-posecache-reserved-byte-9.ospc")]
+    [InlineData("fuzz-posecache-reserved-byte-11.ospc")]
+    public void FuzzFindingsAreRejectedWithATypedError(string file)
+    {
+        // A parsed cache must write back to the same bytes; these two carried reserved bytes the writer would have dropped.
+        Assert.Contains("reserved", Rejects(File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "testdata", file))).Message);
+    }
+
     [Fact]
     public void GarbageNeverThrowsAnythingButATypedError()
     {

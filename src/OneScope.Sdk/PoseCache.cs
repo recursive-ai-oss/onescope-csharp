@@ -180,6 +180,11 @@ public sealed class PoseCache
             throw new ScopeFormatException(name, $"expected flags 0 at offset 6, found {flags}.");
         }
 
+        if (s[9] != 0 || s[10] != 0 || s[11] != 0)
+        {
+            throw new ScopeFormatException(name, $"expected zero reserved bytes at offsets 9 to 11, found {s[9]}, {s[10]}, {s[11]}.");
+        }
+
         int dimensions = s[8];
         uint entityCount = BinaryPrimitives.ReadUInt32LittleEndian(s[12..]);
         uint frameCount = BinaryPrimitives.ReadUInt32LittleEndian(s[16..]);
