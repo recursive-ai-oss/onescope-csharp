@@ -134,13 +134,21 @@ public sealed class PathLiveTests
 {
     private static string Hex(ulong v) => v.ToString("x16", CultureInfo.InvariantCulture);
 
-    [Fact]
-    public async Task AttachingMidRunGivesTheHostsHashesAtTheHostsStepNumbersAndForksFromTheLiveHistory()
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
+    [InlineData(5)]
+    [InlineData(6)]
+    [InlineData(7)]
+    [InlineData(8)]
+    public async Task AttachingMidRunGivesTheHostsHashesAtTheHostsStepNumbersAndForksFromTheLiveHistory(int repeat)
     {
         string dir = LiveAndSessionTests.NewDir();
         try
         {
-            using var host = new CrowdHostThread(400, dir);
+            using var host = new CrowdHostThread(400, dir, int.Parse(Environment.GetEnvironmentVariable("CROWD_DELAY") ?? "2"));
             using Harness h = new Harness(bundled: true);
             host.Start();
             await Task.Delay(300, TestContext.Current.CancellationToken);
@@ -148,6 +156,7 @@ public sealed class PathLiveTests
             long start = attached.GetProperty("startStep").GetInt64();
             Assert.True(start > 1, "the attach should land mid-run");
             Assert.Equal("onepath", attached.GetProperty("module").GetString());
+            Assert.InRange(repeat, 1, 8);
             await Task.Run(host.Join, TestContext.Current.CancellationToken);
             h.Call("sources");
             await Task.Delay(300, TestContext.Current.CancellationToken);

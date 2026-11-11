@@ -196,6 +196,7 @@ public sealed class ShellTests
     public void CaptureSequenceStepsTheCursorAndRecordsExactHashes()
     {
         using Harness h = new Harness(480, 270).Open();
+        h.RequireGraphicsDevice();
         h.Call("seek", """{"step":100}""");
         JsonElement r = h.Call("capture_sequence", """{"dir":"seq","count":4,"stride":50}""");
         Assert.Equal(4, r.GetProperty("frames").GetInt32());

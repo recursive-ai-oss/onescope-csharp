@@ -28,17 +28,10 @@ public sealed class DeviceTests
     private static string AdapterOf(Harness h) => h.Call("capture_frame", """{"size":"360p"}""").GetProperty("renderer").GetString()!;
 
     [Fact]
-    public void DIAGNOSTIC()
-    {
-        string info = $"available={OneGame.Gpu.GpuBackends.IsAvailable} reason={OneGame.Gpu.GpuBackends.UnavailableReason} selected={OneGame.Gpu.GpuBackends.Selected} pin={Environment.GetEnvironmentVariable("ONEGAME_GPU_ADAPTER")}";
-        try { info += " adapters=" + string.Join(" ; ", OneGame.Gpu.GpuBackends.EnumerateAdapters().Select(a => a.ToString())); } catch (Exception e) { info += " enumerate failed: " + e.Message; }
-        Assert.Fail(info);
-    }
-
-    [Fact]
     public void TwoShellsInOneProcessDrawOnTheSameDevice()
     {
         using var first = new Harness().Open();
+        first.RequireGraphicsDevice();
         using var second = new Harness().Open();
         string a = AdapterOf(first);
         string b = AdapterOf(second);

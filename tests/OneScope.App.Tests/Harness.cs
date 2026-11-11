@@ -4,6 +4,7 @@ using OneGame.Control;
 using OneGame.Host;
 using OneScope.Sdk;
 using OneScope.TestModule;
+using Xunit;
 
 
 namespace OneScope.App.Tests;
@@ -50,6 +51,24 @@ internal sealed class Harness : IDisposable
     {
         Call("open", JsonSerializer.Serialize(new { path = Data(file) }));
         return this;
+    }
+
+    /// <summary>
+    /// Skips the test when this machine has no graphics device, which can only be told by drawing: onegame draws a shell that has no device on its CPU
+    /// path (<c>CaptureResult.Renderer</c> is "cpu"), and that path paints the UI panels but not the scene views, which are drawn with the 2D canvas and
+    /// the 3D renderer on a device. A hosted Windows runner has the Vulkan loader but no driver (vkCreateInstance fails with ErrorIncompatibleDriver).
+    /// Only Windows may skip; on Linux and macOS a missing device is a broken environment and fails the test.
+    /// </summary>
+    public void RequireGraphicsDevice()
+    {
+        string renderer = Call("capture_frame", """{"size":"360p"}""").GetProperty("renderer").GetString()!;
+        if (renderer != "cpu")
+        {
+            return;
+        }
+
+        Assert.True(OperatingSystem.IsWindows(), "No graphics device: the shell drew on its CPU path. Linux needs lavapipe (VK_DRIVER_FILES) and macOS needs Metal.");
+        Assert.Skip("This machine has no Vulkan driver, so the shell draws its CPU path, which has no scene views (onegame: CaptureResult.Renderer is \"cpu\"); this test looks at scene pixels.");
     }
 
     public string Capture(string path, string args)
