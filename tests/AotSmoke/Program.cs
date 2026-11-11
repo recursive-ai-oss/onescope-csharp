@@ -43,6 +43,18 @@ var list = new DrawList();
 history.Seek(100);
 history.World.Draw(list, new DrawRequest(0b1111));
 
+bool tagged = false;
+foreach (DrawItem item in list.Items)
+{
+    tagged |= item.Entity.IsSome;
+}
+
+if (!tagged || source.Info.Pokes.Count(p => p.Role == PokeRole.DragToPoint) != 1)
+{
+    Console.WriteLine("draw items carry no entity, or the drag poke is missing");
+    return 1;
+}
+
 var writer = new ArrayBufferWriter<byte>();
 branch.History.Source.WriteReplay(writer);
 IScopeSource reopened = module.Open(writer.WrittenMemory, "fork");
