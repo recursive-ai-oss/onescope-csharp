@@ -82,3 +82,14 @@ the timeline are painted over everything. Forks hang below the time axis as bran
 joined to the time axis, with a marker at the divergence step. Captures of the same state are byte-identical run to run on the same renderer; the committed goldens
 in `tests/OneScope.App.Tests/goldens` come from lavapipe (`VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json`). Triangles and meshes in a 2D view
 are filled by one-pixel strips because the canvas has rectangles and rounded rectangles only.
+
+## Bundled modules
+
+The app carries the OnePhysics module (`RecursiveAI.OnePhysics.Scope`) and offers it first to every file, so `onescope open run.oppr` works with no
+`--module`. It opens OnePhysics replays, world snapshots and scene text, 2D and 3D (units: metres). Entities are the world, each body and each joint;
+overlays are shapes (coloured by state: static, kinematic, awake, asleep, sensor), bounds, contacts, joints and centres of mass; the pokes are `impulse`,
+`set_velocity`, `set_position` and `wake` on a body. A replay played here gives the library's own world hash after every step. `testdata/physics-*` holds
+small inputs written by `tools/GenPhysicsData` with the library's recorder, each replay with its per-step hashes (`.hashes`).
+
+Until the module package is on nuget.org, restore needs the folder that holds it: set `ONESCOPE_FEEDS` to that folder (several are separated by `;`)
+before `dotnet restore`. The module was built against the first preview of the SDK; `DrawStyle` keeps its old four-argument constructor so such a build still loads.

@@ -80,7 +80,7 @@ public sealed class GoldenTests
         }
     }
 
-    private static void Check(string golden, List<(string Sha, string Renderer, string File)> runs)
+    internal static void Check(string golden, List<(string Sha, string Renderer, string File)> runs)
     {
         Harness.Report($"golden {golden}: runs {string.Join(" ", runs.Select(r => r.Sha[..16]))} renderer {string.Join(" | ", runs.Select(r => r.Renderer).Distinct())}");
         // Captures are identical run to run on one device. When a host has several GPUs the runtime may pick a different one for a later
