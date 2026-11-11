@@ -158,7 +158,7 @@ internal sealed class ContractOps(ShellModel shell)
 
         double value;
         Vector3? point = a.Vector("point");
-        long? entity = a.Long("entity");
+        ulong? entity = a.Entity("entity");
         if ((point is null) == (entity is null))
         {
             throw new ControlException("bad_args", "Give exactly one of 'entity' (an entity id) or 'point' (an array of 2 or 3 numbers).");
@@ -166,12 +166,12 @@ internal sealed class ContractOps(ShellModel shell)
 
         if (entity is { } raw)
         {
-            if (raw <= 0)
+            if (raw == 0)
             {
                 throw new ControlException("bad_args", "Argument 'entity' must be a positive entity id.");
             }
 
-            if (!s.History.View.TryReadField(id, new EntityId((ulong)raw), out value))
+            if (!s.History.View.TryReadField(id, new EntityId(raw), out value))
             {
                 throw new ControlException("no_value", $"Field '{id}' has no value at entity {raw} in source {s.Index} at step {s.History.CurrentStep}: the entity is missing or the field does not cover it.");
             }

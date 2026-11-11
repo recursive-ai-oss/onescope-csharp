@@ -1,6 +1,7 @@
 using System.Numerics;
 using OneGame.Control;
 using OneScope.Attach;
+using RecursiveAI.OnePath.Scope;
 using RecursiveAI.OnePhysics.Scope;
 using OneScope.Sdk;
 
@@ -270,11 +271,12 @@ internal sealed partial class ShellModel
         _modules.Add(module);
     }
 
-    /// <summary>Adds the modules that ship inside the app: today the OnePhysics module.</summary>
+    /// <summary>Adds the modules that ship inside the app: the OnePhysics and OnePath modules.</summary>
     public void AddBundledModules()
     {
         AddModule(new PoseCacheModule());
         AddModule(new OnePhysicsModule());
+        AddModule(new OnePathModule());
     }
 
     public SourceSession Source(int index)

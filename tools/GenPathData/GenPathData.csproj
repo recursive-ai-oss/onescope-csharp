@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>$(OneScopeRootNamespace).Tools.Path</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="RecursiveAI.OnePath" />
+    <PackageReference Include="RecursiveAI.OnePath.Scope" />
+    <PackageReference Include="RecursiveAI.OnePhysics" />
+  </ItemGroup>
+</Project>

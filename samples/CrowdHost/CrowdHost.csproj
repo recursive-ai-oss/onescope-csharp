@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>$(OneScopeRootNamespace).Samples.CrowdHost</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- The host needs the library and the probe only; the viewer has the module. -->
+    <PackageReference Include="RecursiveAI.OnePath" />
+    <ProjectReference Include="..\..\src\OneScope.Probe\OneScope.Probe.csproj" />
+  </ItemGroup>
+</Project>

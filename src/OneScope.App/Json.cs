@@ -64,6 +64,30 @@ internal readonly struct Args
         return v.ValueKind == JsonValueKind.Number && v.TryGetInt64(out long l) ? l : throw Wrong(name, "an integer");
     }
 
+    /// <summary>An entity id: a JSON integer, or the same digits as a string. Ids use the whole unsigned 64-bit range, which JSON clients that read numbers as doubles cannot hold, so the string form is accepted too.</summary>
+    public ulong? Entity(string name)
+    {
+        if (!Has(name))
+        {
+            return null;
+        }
+
+        JsonElement v = Get(name);
+        if (v.ValueKind == JsonValueKind.Number && v.TryGetUInt64(out ulong n))
+        {
+            return n;
+        }
+
+        if (v.ValueKind == JsonValueKind.String && ulong.TryParse(v.GetString(), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out ulong s))
+        {
+            return s;
+        }
+
+        throw Wrong(name, "an entity id (an unsigned integer, or its digits as a string)");
+    }
+
+    public ulong RequiredEntity(string name) => Entity(name) ?? throw new ControlException("bad_args", $"Argument '{name}' is required (an entity id).");
+
     public long RequiredLong(string name) => Long(name) ?? throw new ControlException("bad_args", $"Argument '{name}' is required (an integer).");
 
     public int? Int(string name)

@@ -152,8 +152,8 @@ internal sealed partial class ScopeEndpoint
                 return ScopeValue.OfNumber(d);
             case ValueKind.Text when e.ValueKind == JsonValueKind.String:
                 return ScopeValue.OfText(e.GetString()!);
-            case ValueKind.Entity when e.ValueKind == JsonValueKind.Number && e.TryGetInt64(out long id) && id > 0:
-                return ScopeValue.OfEntity(new EntityId((ulong)id));
+            case ValueKind.Entity when e.ValueKind == JsonValueKind.Number && e.TryGetUInt64(out ulong id) && id > 0:
+                return ScopeValue.OfEntity(new EntityId(id));
             case ValueKind.Vector when e.ValueKind == JsonValueKind.Array && e.GetArrayLength() is 2 or 3:
                 {
                     Span<float> c = stackalloc float[3];
