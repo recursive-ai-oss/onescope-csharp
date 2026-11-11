@@ -1,9 +1,9 @@
 // SharpFuzz harness for the two parsers of untrusted bytes that onescope owns outside the modules:
-//   AttachFuzz handshake   the probe handshake and stream frame headers
-//   AttachFuzz session     the .oscope session file
-//   AttachFuzz posecache   the pose cache that opens as a ghost source
-//   AttachFuzz seeds <dir>     write a small seed corpus for both targets
-//   AttachFuzz replay <handshake|session|posecache> <file>   run one input (a crash repro) through the chosen target without the fuzzer
+//   Fuzz handshake   the probe handshake and stream frame headers
+//   Fuzz session     the .oscope session file
+//   Fuzz posecache   the pose cache that opens as a ghost source
+//   Fuzz seeds <dir>     write a small seed corpus for the three targets
+//   Fuzz replay <handshake|session|posecache> <file>   run one input (a crash repro) through the chosen target without the fuzzer
 // Typed errors are the expected answer to bad input; any other exception is a finding.
 using System.Buffers;
 using OneScope.Attach;
@@ -28,7 +28,7 @@ if (args.Length >= 3 && args[0] == "replay")
 
 if (args.Length != 1 || args[0] is not ("handshake" or "session" or "posecache"))
 {
-    Console.Error.WriteLine("usage: AttachFuzz handshake|session|posecache   (run under afl-fuzz)");
+    Console.Error.WriteLine("usage: Fuzz handshake|session|posecache   (run under afl-fuzz)");
     return 2;
 }
 
@@ -42,6 +42,7 @@ static void Run(string target, Stream stream)
     using var ms = new MemoryStream();
     stream.CopyTo(ms);
     byte[] bytes = ms.ToArray();
+    long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
     try
     {
         if (target == "handshake")
@@ -92,6 +93,13 @@ static void Run(string target, Stream stream)
     }
     catch (ScopeFormatException)
     {
+    }
+
+    // A parser must size its work by the input it was given, not by a length field it read.
+    long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+    if (allocated > 64L * 1024 * 1024 + 64L * bytes.Length)
+    {
+        throw new InvalidOperationException($"{target} allocated {allocated} bytes for a {bytes.Length}-byte input");
     }
 }
 

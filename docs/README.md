@@ -12,4 +12,5 @@
 | [session-file.md](session-file.md) | The `.oscope` session file |
 | [pose-cache.md](pose-cache.md) | The pose-cache file a ghost source reads |
 | [test-module.md](test-module.md) | The small test module and its replay format |
+| [fuzzing.md](fuzzing.md) | Running the format fuzz harness |
 | [releasing.md](releasing.md) | What a build needs, package validation, CI and releasing |
