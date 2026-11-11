@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>$(OneScopeRootNamespace).App.Tests</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\OneScope.App\OneScope.App.csproj" />
+    <ProjectReference Include="..\..\src\OneScope.Sdk\OneScope.Sdk.csproj" />
+    <ProjectReference Include="..\OneScope.TestModule\OneScope.TestModule.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\..\testdata\*.ostm" Link="testdata\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="goldens\*.png" Link="goldens\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

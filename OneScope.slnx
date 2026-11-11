@@ -2,10 +2,12 @@
   <Folder Name="/src/">
     <Project Path="src/OneScope.Sdk/OneScope.Sdk.csproj" />
     <Project Path="src/OneScope.Probe/OneScope.Probe.csproj" />
+    <Project Path="src/OneScope.App/OneScope.App.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/OneScope.TestModule/OneScope.TestModule.csproj" />
     <Project Path="tests/OneScope.Sdk.Tests/OneScope.Sdk.Tests.csproj" />
+    <Project Path="tests/OneScope.App.Tests/OneScope.App.Tests.csproj" />
     <Project Path="tests/AotSmoke/AotSmoke.csproj" />
   </Folder>
   <Folder Name="/tools/">
