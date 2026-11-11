@@ -155,12 +155,20 @@ public sealed class PathLiveTests
             Assert.Equal(400, end);
 
             int compared = 0;
+            var mismatches = new List<string>();
             foreach (long s in Enumerable.Range((int)start, (int)(end - start) + 1))
             {
                 h.Call("seek", $$"""{"step":{{s}}}""");
-                Assert.Equal(Hex(host.Hashes[s]), h.Call("sources").GetProperty("sources")[0].GetProperty("hash").GetString());
+                string viewer = h.Call("sources").GetProperty("sources")[0].GetProperty("hash").GetString()!;
+                if (Hex(host.Hashes[s]) != viewer)
+                {
+                    mismatches.Add($"step {s}: host {Hex(host.Hashes[s])} viewer {viewer} (host hash at s-1 {(host.Hashes.TryGetValue(s - 1, out ulong p1) ? Hex(p1) : "-")}, s+1 {(host.Hashes.TryGetValue(s + 1, out ulong n1) ? Hex(n1) : "-")})");
+                }
+
                 compared++;
             }
+
+            Assert.True(mismatches.Count == 0, $"attached at host step {start}, {mismatches.Count} of {compared} steps differ; first: {string.Join(" | ", mismatches.Take(4))}");
 
             // Backwards across the keyframes as well.
             foreach (long s in new[] { end, end - 64, end - 1, start, end - 100, start + 1 })
